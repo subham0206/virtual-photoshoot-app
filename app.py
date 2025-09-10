@@ -105,6 +105,41 @@ if page == "Upload Apparel":
     if uploaded_file is not None:
         image = Image.open(uploaded_file)
         st.session_state.apparel_image = image
+        
+        # Add color change option
+        with st.expander("Change Apparel Color", expanded=True):
+            st.info("Use this option if you want to change the color of your apparel.")
+            color_change = st.checkbox("I want to change the apparel color")
+            
+            if color_change:
+                # Color selection options
+                color_method = st.radio("Color Selection Method", ["Color Picker", "Hex Code Input"])
+                
+                if color_method == "Color Picker":
+                    selected_color = st.color_picker("Select New Color", "#0000FF")
+                else:
+                    selected_color = st.text_input("Enter Hex Color Code", "#0000FF")
+                    # Validate hex code
+                    if selected_color and not selected_color.startswith('#'):
+                        selected_color = '#' + selected_color
+                
+                # Store the selected color in session state
+                if "apparel_color" not in st.session_state:
+                    st.session_state.apparel_color = None
+                
+                # Apply color button
+                if st.button("Apply Color"):
+                    with st.spinner("Applying color..."):
+                        try:
+                            # Store the color for use in the generation step
+                            st.session_state.apparel_color = selected_color
+                            st.success(f"Color {selected_color} will be applied during photoshoot generation.")
+                        except Exception as e:
+                            st.error(f"Error applying color: {str(e)}")
+            else:
+                # Reset the color if checkbox is unchecked
+                st.session_state.apparel_color = None
+        
         # Use 'content' instead of 'auto' for width
         st.image(image, caption="Uploaded Apparel Image", width="content")
         st.success("Apparel image uploaded successfully!")
@@ -125,6 +160,12 @@ elif page == "Generate Model":
         
         # Gender selection first to determine which options to show
         gender = st.radio("Select Model Gender", ["Male", "Female"])
+        
+        # Add facial expression selection
+        facial_expression = st.selectbox(
+            "Facial Expression",
+            options=["Neutral", "Smiling", "Serious", "Confident", "Relaxed"]
+        )
         
         # Define styling options based on gender
         if gender == "Male":
@@ -261,7 +302,8 @@ elif page == "Generate Model":
             "bottom_color": bottom_color,
             "bottom_style": bottom_style,
             "shoe_color": shoe_color,
-            "shoe_style": shoe_style
+            "shoe_style": shoe_style,
+            "facial_expression": facial_expression
         }
         
         # Generate model button
@@ -282,7 +324,8 @@ elif page == "Generate Model":
                     hair_style=hair_style,
                     skin=skin,
                     clothing_type=f"{bottom_color} {bottom_style}",
-                    shoe_style=f"{shoe_color} {shoe_style}"
+                    shoe_style=f"{shoe_color} {shoe_style}",
+                    facial_expression=facial_expression
                 )
                 
                 if model_image:

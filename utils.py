@@ -189,7 +189,8 @@ class ImagenHandler:
         hair_style: str,
         skin: str,
         clothing_type: str,
-        shoe_style: str
+        shoe_style: str,
+        facial_expression: str = "Neutral"  # Add facial expression parameter with default value
     ) -> Tuple[Optional[Image.Image], Optional[str]]:
         """
         Generate a base model image with specified attributes using text-to-text generation
@@ -205,13 +206,15 @@ class ImagenHandler:
             skin: Skin type of the model
             clothing_type: Type of clothing for the model
             shoe_style: Style of shoes for the model
+            facial_expression: Facial expression of the model (Neutral, Smiling, etc.)
         """
         try:
             # Craft a detailed prompt for the model that includes ALL customization details
             prompt = f"""
             Create a photorealistic fashion model image of a {gender.lower()} {physique.lower()} {ethnicity.lower()} person 
             who is {height} tall with {hair_color.lower()} {hair_style.lower()} hair and {skin.lower()} skin.
-            The model should be in a neutral standing pose, wearing {clothing_type.lower()} and {shoe_style.lower()}.
+            The model should be in a neutral standing pose, wearing {clothing_type.lower()} and {shoe_style.lower()},
+            with a {facial_expression.lower()} facial expression.
             
             The image should be high-quality, well-lit, against a simple studio background with soft shadows,
             and suitable for a virtual fitting room application.
@@ -223,6 +226,7 @@ class ImagenHandler:
             - The {clothing_type.lower()} and {shoe_style.lower()} are clearly visible
             - The model MUST be a {gender.lower()} model with appropriate {gender.lower()} physical characteristics
             - The model has a {physique.lower()} body type
+            - The model has a clear {facial_expression.lower()} expression on their face
             """
             
             # Get a more detailed description from Gemini
@@ -239,6 +243,7 @@ class ImagenHandler:
             3. {ethnicity.lower()} ethnicity features
             4. {physique.lower()} body type at {height} tall
             5. Wearing the exact {clothing_type.lower()} and {shoe_style.lower()}
+            6. A clear {facial_expression.lower()} facial expression
             
             The image should be high-quality fashion photography with perfect lighting.
             """
@@ -333,6 +338,17 @@ class ImagenHandler:
             # Analyze the apparel image to get features
             features = extract_apparel_features(apparel_image)
             
+            # Get facial expression if available (new)
+            facial_expression = model_attributes.get("facial_expression", "Neutral")
+            
+            # Check if we have a color change request in session state (new)
+            import streamlit as st
+            apparel_color = None
+            if "apparel_color" in st.session_state and st.session_state.apparel_color:
+                apparel_color = st.session_state.apparel_color
+                # Update the features to reflect the selected color
+                features["dominant_color"] = apparel_color
+            
             # Create a comprehensive description of the model using all model attributes
             model_description = (
                 f"{model_attributes['gender']} model, {model_attributes['ethnicity']}, "
@@ -356,6 +372,7 @@ class ImagenHandler:
             - SAME {model_attributes['build'].lower()} body type
             - SAME {model_attributes['bottom_color'].lower()} {model_attributes['bottom_style'].lower()} pants/bottoms
             - SAME {model_attributes['shoe_color'].lower()} {model_attributes['shoe_style'].lower()} shoes
+            - {facial_expression} facial expression
             
             The apparel MUST maintain these precise characteristics:
             - Type: {features['apparel_type']}
@@ -405,13 +422,19 @@ class ImagenHandler:
                     }]
                 })
             
+            # If color change is requested, add it to the prompt (new)
+            color_change_text = ""
+            if apparel_color:
+                color_change_text = f"Important: Change the color of the apparel to exactly {apparel_color} while preserving its texture and patterns."
+            
             # Prepare final prompt combining text and images
             prompt_text = f"""
             Create a high-definition image where the model is wearing the exact apparel shown in the reference image.
             {base_prompt}
             
-            Important details about the pose:
+            Important details about the pose and expression:
             - The model should be in a {pose.lower()} pose
+            - The model should have a {facial_expression.lower()} facial expression
             - The model should be photographed from a {view_angle.lower()} angle
             - Ensure the apparel is clearly visible and fitted naturally
             - DO NOT CHANGE any of these model features:
@@ -420,7 +443,8 @@ class ImagenHandler:
               * Bottoms: Keep the {model_attributes['bottom_color'].lower()} {model_attributes['bottom_style'].lower()} pants/bottoms exactly as shown
               * Shoes: Keep the {model_attributes['shoe_color'].lower()} {model_attributes['shoe_style'].lower()} shoes exactly as shown
               * Body type: Keep the {model_attributes['build'].lower()} build exactly as shown
-            - The apparel's color ({features['dominant_color']}) and pattern must be preserved exactly
+            {color_change_text}
+            - The apparel's pattern must be preserved exactly
             - Generate at maximum possible resolution and quality for best results
             """
             
@@ -450,8 +474,19 @@ class ImagenHandler:
                     if hasattr(gemini_response, 'parts'):
                         for part in gemini_response.parts:
                             if hasattr(part, 'inline_data') and part.inline_data.mime_type.startswith('image/'):
-                                image_bytes = part.inline_data.data
-                                fitted_image = Image.open(io.BytesIO(image_bytes))
+                                try:
+                                    # First try with direct data access
+                                    image_bytes = part.inline_data.data
+                                    fitted_image = Image.open(io.BytesIO(image_bytes))
+                                except Exception as img_error:
+                                    try:
+                                        # If that fails, try with base64 decoding
+                                        image_bytes = base64.b64decode(part.inline_data.data)
+                                        fitted_image = Image.open(io.BytesIO(image_bytes))
+                                    except Exception as decode_error:
+                                        print(f"Failed to decode image: {decode_error}")
+                                        raise decode_error
+                                
                                 print("Successfully generated fitted image with multimodal input")
                                 
                                 # Save the original high-quality fitted image
@@ -489,7 +524,7 @@ class ImagenHandler:
                                     font = ImageFont.load_default()
                                     title_font = font
                                 
-                                caption = f"Virtual Photoshoot - {pose} Pose - {view_angle}"
+                                caption = f"Virtual Photoshoot - {pose} Pose - {view_angle} - {facial_expression} Expression"
                                 draw.text((width//2 - 200, 20), caption, fill=(0, 0, 0), font=title_font)
                                 draw.text((10, 40), "Original Apparel", fill=(0, 0, 0), font=font)
                                 draw.text((width//3 + 10, 40), "Your Model", fill=(0, 0, 0), font=font)
