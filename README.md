@@ -1,4 +1,4 @@
-# Virtual Photoshoot App
+# B+C Virtual Photoshoot App
 
 An AI-powered application that allows users to upload apparel and fit it onto customized virtual models. The app preserves the color, texture, and size of your apparel while placing it on a model with your chosen attributes.
 

@@ -22,7 +22,7 @@ imagen_handler = ImagenHandler(api_key, timeout=90,
 
 # Set page configuration
 st.set_page_config(
-    page_title="Virtual Photoshoot App",
+    page_title="B+C Virtual Photoshoot App",
     page_icon="👕",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -64,7 +64,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # App title and description
-st.title("Virtual Photoshoot App")
+st.title("B+C Virtual Photoshoot App")
 st.markdown("""
 This application allows you to upload apparel and fit it onto an AI-generated model.
 The app preserves the color, texture, and size of your apparel while placing it on a model with your chosen attributes.
@@ -620,7 +620,7 @@ elif page == "Photoshoot":
 
 # Footer
 st.sidebar.markdown("---")
-st.sidebar.markdown("© 2025 Virtual Photoshoot App")
+st.sidebar.markdown("© 2025 B+C Virtual Photoshoot App")
 
 # Add information about the apparel requirements
 st.sidebar.markdown("### About")
