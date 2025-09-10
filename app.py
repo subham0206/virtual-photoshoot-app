@@ -13,7 +13,7 @@ try:
     api_key = st.secrets["GOOGLE_API_KEY"]
 except:
     # Fallback to hardcoded key for local development
-    api_key = "AIzaSyB6EWGTcKCrJOLfj_BXcqCn7dAKszQ9X6Y"
+    api_key = ""
 
 # Initialize with recommended GenAI models: "imagen-4.0-generate-001" and "gemini-2.5-flash-image-preview"
 imagen_handler = ImagenHandler(api_key, timeout=90, 
