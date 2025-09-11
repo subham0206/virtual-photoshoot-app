@@ -190,7 +190,8 @@ class ImagenHandler:
         skin: str,
         clothing_type: str,
         shoe_style: str,
-        facial_expression: str = "Neutral"  # Add facial expression parameter with default value
+        facial_expression: str = "Neutral",
+        custom_prompt: str = ""
     ) -> Tuple[Optional[Image.Image], Optional[str]]:
         """
         Generate a base model image with specified attributes using text-to-text generation
@@ -207,27 +208,64 @@ class ImagenHandler:
             clothing_type: Type of clothing for the model
             shoe_style: Style of shoes for the model
             facial_expression: Facial expression of the model (Neutral, Smiling, etc.)
+            custom_prompt: Additional custom details for the model (accessories, specific features, etc.)
         """
         try:
-            # Craft a detailed prompt for the model that includes ALL customization details
-            prompt = f"""
-            Create a photorealistic fashion model image of a {gender.lower()} {physique.lower()} {ethnicity.lower()} person 
-            who is {height} tall with {hair_color.lower()} {hair_style.lower()} hair and {skin.lower()} skin.
-            The model should be in a neutral standing pose, wearing {clothing_type.lower()} and {shoe_style.lower()},
-            with a {facial_expression.lower()} facial expression.
+            # Check if we have a custom prompt with specific overrides
+            has_body_type_override = "Body type details:" in custom_prompt if custom_prompt else False
+            has_facial_features_override = "Facial features:" in custom_prompt if custom_prompt else False
+            has_makeup_override = "Makeup:" in custom_prompt if custom_prompt else False
+            has_accessories_override = "Accessories:" in custom_prompt if custom_prompt else False
+            has_environment_override = "Environment context:" in custom_prompt if custom_prompt else False
             
-            The image should be high-quality, well-lit, against a simple studio background with soft shadows,
-            and suitable for a virtual fitting room application.
+            # Start with base attributes that should always be included
+            prompt = f"""
+            Create a photorealistic fashion model image of a {gender.lower()} {ethnicity.lower()} person 
+            who is {height} tall with {hair_color.lower()} {hair_style.lower()} hair and {skin.lower()} skin.
+            """
+            
+            # Only include physique if not overridden by custom prompt
+            if not has_body_type_override:
+                prompt += f"The model should have a {physique.lower()} build. "
+            
+            # Add clothing and shoes (these are always kept as they're not typically overridden)
+            prompt += f"The model should be in a neutral standing pose, wearing {clothing_type.lower()} and {shoe_style.lower()}, "
+            
+            # Add facial expression unless it might be overridden in custom prompt
+            if not has_facial_features_override and not has_makeup_override:
+                prompt += f"with a {facial_expression.lower()} facial expression. "
+            else:
+                prompt += ". "
+                
+            # Add standard quality requirements
+            prompt += """
+            The image should be high-quality, well-lit, suitable for a virtual fitting room application.
             
             Please ensure:
             - The person is centered in the frame with their full body visible
-            - The {hair_color.lower()} {hair_style.lower()} hairstyle is clearly visible and accurately represented
-            - The {skin.lower()} skin texture is accurately rendered
-            - The {clothing_type.lower()} and {shoe_style.lower()} are clearly visible
-            - The model MUST be a {gender.lower()} model with appropriate {gender.lower()} physical characteristics
-            - The model has a {physique.lower()} body type
-            - The model has a clear {facial_expression.lower()} expression on their face
             """
+            
+            # Add non-overridden attributes
+            prompt += f"- The {hair_color.lower()} {hair_style.lower()} hairstyle is clearly visible and accurately represented\n"
+            prompt += f"- The {skin.lower()} skin texture is accurately rendered\n"
+            prompt += f"- The {clothing_type.lower()} and {shoe_style.lower()} are clearly visible\n"
+            prompt += f"- The model MUST be a {gender.lower()} model with appropriate {gender.lower()} physical characteristics\n"
+            
+            # Add attributes that aren't overridden by custom prompts
+            if not has_body_type_override:
+                prompt += f"- The model has a {physique.lower()} body type\n"
+            
+            if not has_facial_features_override and not has_makeup_override:
+                prompt += f"- The model has a clear {facial_expression.lower()} expression on their face\n"
+            
+            # Add background setting if not overridden
+            if not has_environment_override:
+                prompt += "- Use a simple studio background with soft shadows\n"
+            
+            # Add custom prompt details as highest priority overrides
+            if custom_prompt:
+                prompt += f"\n\n### PRIORITY CUSTOM DETAILS (THESE OVERRIDE ANY CONFLICTING INSTRUCTIONS ABOVE) ###\n{custom_prompt}\n"
+                prompt += "\nThe above custom details MUST be strictly followed even if they conflict with earlier specifications.\n"
             
             # Get a more detailed description from Gemini
             detail_prompt = f"""
@@ -241,12 +279,27 @@ class ImagenHandler:
             1. Exactly {hair_color.lower()} {hair_style.lower()} hair (this is critical)
             2. {skin.lower()} skin as specified
             3. {ethnicity.lower()} ethnicity features
-            4. {physique.lower()} body type at {height} tall
-            5. Wearing the exact {clothing_type.lower()} and {shoe_style.lower()}
-            6. A clear {facial_expression.lower()} facial expression
-            
-            The image should be high-quality fashion photography with perfect lighting.
             """
+            
+            # Add non-overridden elements to the detail prompt
+            if not has_body_type_override:
+                detail_prompt += f"4. {physique.lower()} body type at {height} tall\n"
+            else:
+                detail_prompt += f"4. The body type details exactly as specified in the custom prompt, at {height} tall\n"
+                
+            detail_prompt += f"5. Wearing the exact {clothing_type.lower()} and {shoe_style.lower()}\n"
+            
+            if not has_facial_features_override and not has_makeup_override:
+                detail_prompt += f"6. A clear {facial_expression.lower()} facial expression\n"
+            else:
+                detail_prompt += "6. The exact facial features and expressions as specified in the custom prompt\n"
+            
+            # Include custom prompt details as highest priority
+            if custom_prompt:
+                detail_prompt += f"\n\nTHESE CUSTOM DETAILS ARE HIGHEST PRIORITY AND OVERRIDE ANY CONFLICTING SPECIFICATIONS:\n{custom_prompt}\n"
+                detail_prompt += "\nThe model MUST incorporate all these custom details exactly as specified."
+            
+            detail_prompt += "\n\nThe image should be high-quality fashion photography with perfect lighting."
             
             try:
                 response = self.text_model.generate_content(
@@ -259,6 +312,9 @@ class ImagenHandler:
                 
                 # Use the enhanced prompt to generate an image
                 enhanced_prompt = response.text
+                
+                # For debugging
+                print(f"Final prompt with priority for custom details: {enhanced_prompt[:200]}...")
                 
                 # Generate the image using our image generation method
                 model_image = self.generate_image_with_api(enhanced_prompt)
@@ -338,16 +394,29 @@ class ImagenHandler:
             # Analyze the apparel image to get features
             features = extract_apparel_features(apparel_image)
             
-            # Get facial expression if available (new)
+            # Get facial expression if available
             facial_expression = model_attributes.get("facial_expression", "Neutral")
             
-            # Check if we have a color change request in session state (new)
+            # Check if we have a color change request in session state
             import streamlit as st
             apparel_color = None
             if "apparel_color" in st.session_state and st.session_state.apparel_color:
                 apparel_color = st.session_state.apparel_color
                 # Update the features to reflect the selected color
                 features["dominant_color"] = apparel_color
+                
+            # Check for photoshoot custom prompt in session state
+            photoshoot_custom_prompt = ""
+            if "photoshoot_custom_prompt" in st.session_state and st.session_state.photoshoot_custom_prompt:
+                photoshoot_custom_prompt = st.session_state.photoshoot_custom_prompt
+                
+            # Check if the custom prompt contains specific overrides
+            has_fit_style_override = "Fit style:" in photoshoot_custom_prompt
+            has_texture_override = "Texture:" in photoshoot_custom_prompt
+            has_color_override = "Color adjustments:" in photoshoot_custom_prompt
+            has_drape_override = "Drape and movement:" in photoshoot_custom_prompt
+            has_strap_override = "Strap/neckline details:" in photoshoot_custom_prompt
+            has_styling_override = "Styling instructions:" in photoshoot_custom_prompt
             
             # Create a comprehensive description of the model using all model attributes
             model_description = (
@@ -375,11 +444,25 @@ class ImagenHandler:
             - {facial_expression} facial expression
             
             The apparel MUST maintain these precise characteristics:
-            - Type: {features['apparel_type']}
-            - Color: PRECISELY {features['dominant_color']} (must match exactly)
-            - Pattern: {features['pattern_type']} (preserve all pattern details)
-            - Texture: Maintain the exact fabric texture and material appearance
-            - Size and fit: The apparel should fit the model while maintaining its original proportions
+            - Type: {features['apparel_type']}"""
+            
+            # Only include color if not overridden by custom prompt
+            if not has_color_override:
+                base_prompt += f"\n- Color: PRECISELY {features['dominant_color']} (must match exactly)"
+            
+            # Only include pattern if not overridden by custom prompt
+            if not has_texture_override:
+                base_prompt += f"\n- Pattern: {features['pattern_type']} (preserve all pattern details)"
+            
+            # Only include texture if not overridden by custom prompt
+            if not has_texture_override:
+                base_prompt += "\n- Texture: Maintain the exact fabric texture and material appearance"
+            
+            # Only include fit if not overridden by custom prompt
+            if not has_fit_style_override and not has_drape_override:
+                base_prompt += "\n- Size and fit: The apparel should fit the model while maintaining its original proportions"
+            
+            base_prompt += f"""
             
             Background: {background_desc}
             
@@ -391,6 +474,11 @@ class ImagenHandler:
             CRITICAL: The primary objective is to show the EXACT SAME model from the previous step now wearing
             the EXACT SAME apparel with NO changes to the model's features, clothing, or accessories except for adding the new apparel.
             """
+            
+            # Add custom photoshoot prompt if available, marking it as highest priority
+            if photoshoot_custom_prompt:
+                base_prompt += f"\n\n### PRIORITY CUSTOM DETAILS (THESE OVERRIDE ANY CONFLICTING INSTRUCTIONS ABOVE) ###\n{photoshoot_custom_prompt}\n"
+                base_prompt += "\nThe above custom details MUST be strictly followed even if they conflict with earlier specifications.\n"
             
             # Include both the model image and apparel image in the prompt if available
             multimodal_content = []
@@ -422,9 +510,9 @@ class ImagenHandler:
                     }]
                 })
             
-            # If color change is requested, add it to the prompt (new)
+            # If color change is requested, add it to the prompt
             color_change_text = ""
-            if apparel_color:
+            if apparel_color and not has_color_override:  # Only add if not already overridden in custom prompt
                 color_change_text = f"Important: Change the color of the apparel to exactly {apparel_color} while preserving its texture and patterns."
             
             # Prepare final prompt combining text and images
@@ -436,7 +524,13 @@ class ImagenHandler:
             - The model should be in a {pose.lower()} pose
             - The model should have a {facial_expression.lower()} facial expression
             - The model should be photographed from a {view_angle.lower()} angle
-            - Ensure the apparel is clearly visible and fitted naturally
+            """
+            
+            # Only add generic fit instructions if not overridden
+            if not has_fit_style_override and not has_drape_override:
+                prompt_text += "- Ensure the apparel is clearly visible and fitted naturally\n"
+                
+            prompt_text += f"""
             - DO NOT CHANGE any of these model features:
               * Hair style: Keep the {model_attributes['hair_style'].lower()} style exactly as shown
               * Hair color: Keep the {model_attributes['hair_color'].lower()} hair color exactly as shown
@@ -444,9 +538,18 @@ class ImagenHandler:
               * Shoes: Keep the {model_attributes['shoe_color'].lower()} {model_attributes['shoe_style'].lower()} shoes exactly as shown
               * Body type: Keep the {model_attributes['build'].lower()} build exactly as shown
             {color_change_text}
-            - The apparel's pattern must be preserved exactly
-            - Generate at maximum possible resolution and quality for best results
             """
+            
+            # Only add pattern preservation if not overridden
+            if not has_texture_override:
+                prompt_text += "- The apparel's pattern must be preserved exactly\n"
+                
+            prompt_text += "- Generate at maximum possible resolution and quality for best results\n"
+            
+            # Add custom photoshoot prompt to final prompt text if available
+            if photoshoot_custom_prompt:
+                prompt_text += f"\n\nSTRICTLY APPLY THESE CUSTOM STYLING AND FIT DETAILS (HIGHEST PRIORITY):\n{photoshoot_custom_prompt}\n"
+                prompt_text += "\nThese custom details OVERRIDE any conflicting instructions above."
             
             multimodal_content.append({
                 "role": "user",
@@ -454,6 +557,9 @@ class ImagenHandler:
                     "text": prompt_text
                 }]
             })
+            
+            # For debugging
+            print(f"Using custom photoshoot prompt: {photoshoot_custom_prompt[:100]}..." if photoshoot_custom_prompt else "No custom photoshoot prompt")
             
             # Try the gemini model for apparel fitting using multimodal input
             try:
@@ -531,138 +637,10 @@ class ImagenHandler:
                                 draw.text((width//2 - 100, height//3 + 60), "Final Result", fill=(0, 0, 0), font=font)
                                 
                                 return composite, "Successfully fitted apparel on model", high_quality_fitted
-                else:
-                    # If no model image is provided, fall back to the text-only approach
-                    print("No model image provided, using text-only approach")
-                    raise Exception("No model image provided")
-                    
+
             except Exception as multimodal_error:
                 print(f"Multimodal approach failed: {multimodal_error}")
-                # Fall back to standard text-only approach
-                
-                # Get enhanced prompt from Gemini for text-only approach
-                detail_prompt = f"""
-                Create a highly specific, detailed image prompt for a text-to-image AI to generate a high-resolution photorealistic image 
-                of a fashion model wearing a SPECIFIC piece of clothing.
-                
-                Base prompt: '{base_prompt}'
-                
-                Focus on:
-                1. EXACT MODEL PRESERVATION - Keep ALL aspects of the model's appearance, including {model_attributes['hair_style'].lower()} {model_attributes['hair_color'].lower()} hair, {model_attributes['bottom_color'].lower()} {model_attributes['bottom_style'].lower()}, and {model_attributes['shoe_color'].lower()} {model_attributes['shoe_style'].lower()} shoes
-                2. CORRECT VIEW ANGLE - Ensure the {view_angle.lower()} perspective is maintained
-                3. PROPER BACKGROUND - Use {background_desc}
-                4. APPROPRIATE LIGHTING - Apply {lighting_desc}
-                5. EXACT COLOR PRESERVATION - The exact {features['dominant_color']} color of the apparel must be matched precisely
-                6. EXACT TEXTURE PRESERVATION - The fabric texture must look identical
-                7. EXACT PATTERN PRESERVATION - Any patterns or designs must be preserved with precision
-                8. PROPER FIT while maintaining the apparel's original proportions
-                9. MAXIMUM POSSIBLE RESOLUTION and image quality for professional results
-                
-                Make the prompt highly specific and technically precise about preserving BOTH the model's characteristics AND the apparel's visual characteristics.
-                """
-                
-                response = self.text_model.generate_content(
-                    detail_prompt,
-                    generation_config={
-                        "temperature": 0.2,  # Lower temperature for more precise output
-                        "max_output_tokens": 1024,
-                    }
-                )
-                
-                enhanced_prompt = response.text
-                
-                # Try the gemini model for apparel fitting with text-only prompt
-                try:
-                    print("Using Gemini model for apparel fitting with text-only prompt")
-                    gemini_response = self.gemini_image_model.generate_content(
-                        enhanced_prompt,
-                        generation_config={
-                            "temperature": 0.2,
-                        }
-                    )
-                    
-                    # Extract image from response
-                    fitted_image = None
-                    if hasattr(gemini_response, 'parts'):
-                        for part in gemini_response.parts:
-                            if hasattr(part, 'inline_data') and part.inline_data.mime_type.startswith('image/'):
-                                image_bytes = part.inline_data.data
-                                fitted_image = Image.open(io.BytesIO(image_bytes))
-                                print("Successfully generated fitted image with text-only prompt")
-                                
-                                # Save the original high-quality fitted image
-                                high_quality_fitted = fitted_image.copy()
-                                
-                                # Create composite image
-                                width, height = 800, 1000
-                                composite = Image.new('RGB', (width, height), color=(245, 245, 250))
-                                
-                                apparel_resized = apparel_image.copy()
-                                apparel_resized.thumbnail((width//2 - 20, height//2 - 20))
-                                
-                                fitted_resized = fitted_image.copy()
-                                fitted_resized.thumbnail((width//2 - 20, height//2 - 20))
-                                
-                                composite.paste(apparel_resized, (10, 60))
-                                composite.paste(fitted_resized, (width//2 + 10, 60))
-                                
-                                draw = ImageDraw.Draw(composite)
-                                try:
-                                    font = ImageFont.truetype("Arial", 16)
-                                    title_font = ImageFont.truetype("Arial", 20)
-                                except IOError:
-                                    font = ImageFont.load_default()
-                                    title_font = font
-                                
-                                caption = f"Virtual Photoshoot - {pose} Pose - {view_angle}"
-                                draw.text((width//2 - 200, 20), caption, fill=(0, 0, 0), font=title_font)
-                                draw.text((10, 40), "Original Apparel", fill=(0, 0, 0), font=font)
-                                draw.text((width//2 + 10, 40), "Model Wearing Apparel", fill=(0, 0, 0), font=font)
-                                
-                                return composite, enhanced_prompt, high_quality_fitted
-                except Exception as gemini_error:
-                    print(f"Gemini model approach failed: {gemini_error}")
-            
-            # If all above approaches fail, fall back to our general image generation method
-            print("Falling back to general image generation")
-            fitted_image = self.generate_image_with_api(enhanced_prompt)
-            
-            if fitted_image:
-                # Save the original high-quality fitted image
-                high_quality_fitted = fitted_image.copy()
-                
-                # Create the composite with the original apparel for reference
-                width, height = 800, 1000
-                composite = Image.new('RGB', (width, height), color=(245, 245, 250))
-                
-                # Resize the original apparel image and the generated image to fit side by side
-                apparel_resized = apparel_image.copy()
-                apparel_resized.thumbnail((width//2 - 20, height//2 - 20))
-                
-                fitted_resized = fitted_image.copy()
-                fitted_resized.thumbnail((width//2 - 20, height//2 - 20))
-                
-                # Paste the images
-                composite.paste(apparel_resized, (10, 60))
-                composite.paste(fitted_resized, (width//2 + 10, 60))
-                
-                # Add labels
-                draw = ImageDraw.Draw(composite)
-                try:
-                    font = ImageFont.truetype("Arial", 16)
-                    title_font = ImageFont.truetype("Arial", 20)
-                except IOError:
-                    font = ImageFont.load_default()
-                    title_font = font
-                
-                caption = f"Virtual Photoshoot - {pose} Pose - {view_angle}"
-                draw.text((width//2 - 200, 20), caption, fill=(0, 0, 0), font=title_font)
-                draw.text((10, 40), "Original Apparel", fill=(0, 0, 0), font=font)
-                draw.text((width//2 + 10, 40), "Model Wearing Apparel", fill=(0, 0, 0), font=font)
-                
-                return composite, enhanced_prompt, high_quality_fitted
-            else:
-                return None, "Failed to generate fitted image", None
+                return None, str(multimodal_error), None
             
         except Exception as e:
             return None, str(e), None

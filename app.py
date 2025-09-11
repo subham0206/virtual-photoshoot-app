@@ -155,6 +155,72 @@ elif page == "Generate Model":
         st.subheader("Uploaded Apparel")
         st.image(st.session_state.apparel_image, width=300)
         
+        # Add Prompt Input Feature for model generation
+        with st.expander("Advanced Prompt Input", expanded=True):
+            st.info("Provide additional details to customize your model beyond the standard options.")
+            
+            # Initialize the custom prompt in session state if not already present
+            if "model_custom_prompt" not in st.session_state:
+                st.session_state.model_custom_prompt = ""
+            
+            custom_prompt_options = st.multiselect(
+                "Select additional details to include:",
+                options=[
+                    "Accessories (jewelry, watches, etc.)",
+                    "Specific body type details",
+                    "Specific facial features",
+                    "Makeup style",
+                    "Environment context",
+                    "Other custom details"
+                ]
+            )
+            
+            # Display relevant input fields based on selections
+            custom_prompt_parts = []
+            
+            if "Accessories (jewelry, watches, etc.)" in custom_prompt_options:
+                accessories = st.text_area("Describe accessories:", 
+                                          placeholder="Example: gold hoop earrings, minimalist watch, thin gold necklace")
+                if accessories:
+                    custom_prompt_parts.append(f"Accessories: {accessories}")
+            
+            if "Specific body type details" in custom_prompt_options:
+                body_type = st.text_area("Describe specific body type details:", 
+                                        placeholder="Example: athletic shoulders, slim waist, toned arms")
+                if body_type:
+                    custom_prompt_parts.append(f"Body type details: {body_type}")
+            
+            if "Specific facial features" in custom_prompt_options:
+                facial_features = st.text_area("Describe specific facial features:", 
+                                              placeholder="Example: defined cheekbones, almond eyes, strong jawline")
+                if facial_features:
+                    custom_prompt_parts.append(f"Facial features: {facial_features}")
+            
+            if "Makeup style" in custom_prompt_options:
+                makeup = st.text_area("Describe makeup style:", 
+                                     placeholder="Example: natural makeup, subtle eyeliner, nude lipstick")
+                if makeup:
+                    custom_prompt_parts.append(f"Makeup: {makeup}")
+            
+            if "Environment context" in custom_prompt_options:
+                environment = st.text_area("Describe environment context:", 
+                                          placeholder="Example: indoor studio setting, natural lighting")
+                if environment:
+                    custom_prompt_parts.append(f"Environment context: {environment}")
+            
+            if "Other custom details" in custom_prompt_options:
+                other_details = st.text_area("Other custom details:", 
+                                            placeholder="Any other specific details you want to include")
+                if other_details:
+                    custom_prompt_parts.append(f"Custom details: {other_details}")
+            
+            # Combine all parts into a final custom prompt
+            if custom_prompt_parts:
+                st.session_state.model_custom_prompt = ". ".join(custom_prompt_parts)
+                st.success("Custom prompt details will be applied to model generation.")
+            else:
+                st.session_state.model_custom_prompt = ""
+        
         # Model customization options
         st.subheader("Customize Your Model")
         
@@ -303,7 +369,8 @@ elif page == "Generate Model":
             "bottom_style": bottom_style,
             "shoe_color": shoe_color,
             "shoe_style": shoe_style,
-            "facial_expression": facial_expression
+            "facial_expression": facial_expression,
+            "custom_prompt": st.session_state.model_custom_prompt  # Add custom prompt to attributes
         }
         
         # Generate model button
@@ -313,6 +380,10 @@ elif page == "Generate Model":
                 detailed_description = f"{gender} model, {ethnicity}, {height} tall, {build.lower()} build, "
                 detailed_description += f"{hair_color.lower()} {hair_style.lower()} hair, {skin.lower()} skin, "
                 detailed_description += f"wearing {bottom_color.lower()} {bottom_style.lower()} and {shoe_color.lower()} {shoe_style.lower()} shoes."
+                
+                # Add custom prompt to detailed description if available
+                if st.session_state.model_custom_prompt:
+                    detailed_description += f" {st.session_state.model_custom_prompt}"
                 
                 # Use our ImagenHandler to generate the model image with the detailed attributes
                 model_image, error = imagen_handler.generate_model_image(
@@ -325,7 +396,8 @@ elif page == "Generate Model":
                     skin=skin,
                     clothing_type=f"{bottom_color} {bottom_style}",
                     shoe_style=f"{shoe_color} {shoe_style}",
-                    facial_expression=facial_expression
+                    facial_expression=facial_expression,
+                    custom_prompt=st.session_state.model_custom_prompt  # Pass custom prompt to the ImagenHandler
                 )
                 
                 if model_image:
@@ -357,6 +429,79 @@ elif page == "Photoshoot":
             st.subheader("Your Model")
             st.image(st.session_state.model_image, width=300)
         
+        # Add Prompt Input Feature for photoshoot generation
+        with st.expander("Advanced Prompt Input for Photoshoot", expanded=True):
+            st.info("Provide additional details for how the apparel should fit and appear on the model.")
+            
+            # Initialize the custom prompt in session state if not already present
+            if "photoshoot_custom_prompt" not in st.session_state:
+                st.session_state.photoshoot_custom_prompt = ""
+            
+            custom_photoshoot_options = st.multiselect(
+                "Select additional details to include:",
+                options=[
+                    "Fit style and appearance",
+                    "Apparel texture details",
+                    "Apparel color adjustments",
+                    "Apparel drape and movement",
+                    "Strap or neckline details",
+                    "Specific styling instructions",
+                    "Other custom details"
+                ]
+            )
+            
+            # Display relevant input fields based on selections
+            custom_photoshoot_parts = []
+            
+            if "Fit style and appearance" in custom_photoshoot_options:
+                fit_style = st.text_area("Describe fit style:", 
+                                        placeholder="Example: loose and relaxed fit, tight and form-fitting, slightly oversized")
+                if fit_style:
+                    custom_photoshoot_parts.append(f"Fit style: {fit_style}")
+            
+            if "Apparel texture details" in custom_photoshoot_options:
+                texture = st.text_area("Describe texture details:", 
+                                      placeholder="Example: soft cotton texture, ribbed knit texture, silky smooth finish")
+                if texture:
+                    custom_photoshoot_parts.append(f"Texture: {texture}")
+            
+            if "Apparel color adjustments" in custom_photoshoot_options:
+                color_adj = st.text_area("Describe color adjustments:", 
+                                        placeholder="Example: make the blue more vibrant, add slight gradient effect")
+                if color_adj:
+                    custom_photoshoot_parts.append(f"Color adjustments: {color_adj}")
+            
+            if "Apparel drape and movement" in custom_photoshoot_options:
+                drape = st.text_area("Describe drape and movement:", 
+                                    placeholder="Example: flowing fabric with natural folds, stiff structured appearance")
+                if drape:
+                    custom_photoshoot_parts.append(f"Drape and movement: {drape}")
+            
+            if "Strap or neckline details" in custom_photoshoot_options:
+                strap_details = st.text_area("Describe strap or neckline details:", 
+                                            placeholder="Example: thin straps sitting flat on shoulders, wide scoop neckline")
+                if strap_details:
+                    custom_photoshoot_parts.append(f"Strap/neckline details: {strap_details}")
+            
+            if "Specific styling instructions" in custom_photoshoot_options:
+                styling = st.text_area("Describe specific styling instructions:", 
+                                      placeholder="Example: tuck in front of shirt, roll sleeves up to elbows")
+                if styling:
+                    custom_photoshoot_parts.append(f"Styling instructions: {styling}")
+            
+            if "Other custom details" in custom_photoshoot_options:
+                other_photoshoot_details = st.text_area("Other custom details:", 
+                                                      placeholder="Any other specific details for the photoshoot")
+                if other_photoshoot_details:
+                    custom_photoshoot_parts.append(f"Custom details: {other_photoshoot_details}")
+            
+            # Combine all parts into a final custom prompt
+            if custom_photoshoot_parts:
+                st.session_state.photoshoot_custom_prompt = ". ".join(custom_photoshoot_parts)
+                st.success("Custom prompt details will be applied to photoshoot generation.")
+            else:
+                st.session_state.photoshoot_custom_prompt = ""
+                
         # Create tabs for different photoshoot configuration options
         pose_tab, view_tab, background_tab, lighting_tab = st.tabs(["Pose", "View Angle", "Background", "Lighting"])
         
@@ -581,6 +726,8 @@ elif page == "Photoshoot":
                         st.session_state.final_image = final_image
                         # Store the high quality fitted image separately
                         st.session_state.high_quality_fitted = high_quality_fitted
+                        # Set a flag to indicate photoshoot has been created
+                        st.session_state.photoshoot_created = True
                         
                         st.success("Photoshoot created successfully!")
                         st.image(final_image, caption=f"Final Photoshoot - {pose} Pose", width="stretch")
@@ -617,6 +764,399 @@ elif page == "Photoshoot":
                                 )
                     else:
                         st.error(f"Error creating photoshoot: {error}")
+        
+        # Initialize the adjusted images list in session state if it doesn't exist
+        if "adjusted_images" not in st.session_state:
+            st.session_state.adjusted_images = []
+        
+        # Initialize photoshoot_created flag if it doesn't exist
+        if "photoshoot_created" not in st.session_state:
+            st.session_state.photoshoot_created = False
+        
+        # Add clothing fit options after the photoshoot image is generated
+        # This is now outside the "Fit Apparel" button conditional block
+        if st.session_state.photoshoot_created:
+            st.markdown("---")
+            st.subheader("Adjust Clothing Fit")
+            st.info("Fine-tune how the clothing fits on the model. Each adjustment will generate a new image without replacing the original.")
+            
+            # Always show the original image again for reference
+            if st.session_state.final_image is not None:
+                st.image(st.session_state.final_image, caption="Original Photoshoot", width=400)
+            
+            # Get gender from model attributes to determine which clothing fit options to show
+            gender = st.session_state.model_attributes.get("gender", "Female")
+            
+            # Initialize the fit adjustments in session state if not already present
+            if "fit_adjustments" not in st.session_state:
+                st.session_state.fit_adjustments = {}
+            
+            fit_option_key = f"fit_option_selected_{gender.lower()}"
+            if fit_option_key not in st.session_state:
+                st.session_state[fit_option_key] = False
+            
+            if gender == "Male":
+                # Men's clothing fit options
+                with st.expander("Men's Clothing Fit Options", expanded=True):
+                    st.info("Select the type of fit you want for different clothing items.")
+                    
+                    # Flag to track if any fit option was selected
+                    any_option_selected = False
+                    
+                    # Men's shirt fit
+                    shirt_fit = st.selectbox(
+                        "Shirt Fit",
+                        options=["Slim", "Regular", "Loose", "Tailored"],
+                        help="We will only show our product for tops but our cuts will range from slim, relaxed, oversized, boxy",
+                        key="shirt_fit_selector"
+                    )
+                    st.session_state.fit_adjustments["shirt_fit"] = shirt_fit
+                    
+                    # Men's t-shirt fit
+                    tshirt_fit = st.selectbox(
+                        "T-Shirt Fit",
+                        options=["Slim", "Regular", "Oversized"],
+                        help="We will only show our product for tops but our cuts will range from slim, relaxed, oversized, boxy",
+                        key="tshirt_fit_selector"
+                    )
+                    st.session_state.fit_adjustments["tshirt_fit"] = tshirt_fit
+                    
+                    # Men's pants fit
+                    pants_fit = st.selectbox(
+                        "Pants Fit",
+                        options=["Straight", "Relaxed", "Loose", "Bootcut", "Neutral Cargo Pants"],
+                        key="pants_fit_selector"
+                    )
+                    st.session_state.fit_adjustments["pants_fit"] = pants_fit
+                    
+                    # Men's jeans fit
+                    jeans_fit = st.selectbox(
+                        "Jeans Fit",
+                        options=["Regular", "Loose Baggy", "Cargo Workwear Jean", "Wide Leg", "Straight Leg", "Dark Wash", "Slightly Distressed"],
+                        key="jeans_fit_selector"
+                    )
+                    st.session_state.fit_adjustments["jeans_fit"] = jeans_fit
+                    
+                    # Men's shorts fit
+                    shorts_fit = st.selectbox(
+                        "Shorts Fit",
+                        options=["Regular", "Relaxed", "Loose", "Baggy"],
+                        key="shorts_fit_selector"
+                    )
+                    st.session_state.fit_adjustments["shorts_fit"] = shorts_fit
+                    
+                    st.session_state[fit_option_key] = True
+            else:
+                # Women's clothing fit options
+                with st.expander("Women's Clothing Fit Options", expanded=True):
+                    st.info("Select the type of fit you want for different clothing items.")
+                    
+                    # Women's shirts and blouses fit
+                    shirt_blouse_fit = st.selectbox(
+                        "Shirts and Blouses Fit",
+                        options=["Slim", "Regular", "Loose", "Boxy", "Tailored"],
+                        help="We will only show our product for tops but our cuts will range from slim, relaxed, oversized, boxy",
+                        key="shirt_blouse_fit_selector"
+                    )
+                    st.session_state.fit_adjustments["shirt_blouse_fit"] = shirt_blouse_fit
+                    
+                    # Women's tops fit
+                    tops_fit = st.selectbox(
+                        "Tops Fit",
+                        options=["Slim", "Regular", "Oversized", "Loose"],
+                        help="We will only show our product for tops but our cuts will range from slim, relaxed, oversized, boxy",
+                        key="tops_fit_selector"
+                    )
+                    st.session_state.fit_adjustments["tops_fit"] = tops_fit
+                    
+                    # Women's pants fit
+                    pants_fit = st.selectbox(
+                        "Pants Fit",
+                        options=["Straight", "Relaxed", "Bootcut", "Wide Leg", "Palazzo"],
+                        key="pants_fit_selector"
+                    )
+                    st.session_state.fit_adjustments["pants_fit"] = pants_fit
+                    
+                    # Women's jeans fit
+                    jeans_fit = st.selectbox(
+                        "Jeans Fit",
+                        options=["Straight Leg", "Bootcut", "Flared", "Mom Jean", "Boyfriend Baggy"],
+                        key="jeans_fit_selector"
+                    )
+                    st.session_state.fit_adjustments["jeans_fit"] = jeans_fit
+                    
+                    # Women's skirts fit
+                    skirts_fit = st.selectbox(
+                        "Skirts",
+                        options=["Pencil", "A-Line", "Pleated", "Mini", "Midi", "Maxi", "Denim Skirt"],
+                        key="skirts_fit_selector"
+                    )
+                    st.session_state.fit_adjustments["skirts_fit"] = skirts_fit
+                    
+                    st.session_state[fit_option_key] = True
+            
+            # Button to apply the clothing fit adjustments - always show this
+            if st.button("Apply Fit Adjustments", key="apply_fit_button"):
+                # Update the photoshoot custom prompt with the fit adjustments
+                fit_adjustments_prompt = []
+                
+                # First, identify if we're dealing with a top or bottom garment
+                # For simplicity, we'll add a classifier that assumes tops are the default for this app
+                garment_type = "top"  # Default to top
+                
+                # Add a note about which garment is being fitted specifically
+                fit_adjustments_prompt.append(f"The uploaded apparel is a {garment_type} garment")
+                
+                # Track which fit option was specifically chosen by the user
+                selected_top_fit = None
+                selected_bottom_fit = None
+                
+                # Create a dictionary to store only the fit options that were explicitly changed by the user
+                # We'll determine this by tracking which options the user interacted with
+                user_selected_fits = {}
+                
+                # Create simple description of the model's existing outfit
+                gender = st.session_state.model_attributes.get("gender", "Female")
+                bottom_color = st.session_state.model_attributes.get("bottom_color", "")
+                bottom_style = st.session_state.model_attributes.get("bottom_style", "")
+                
+                # For women's garments
+                if gender == "Female":
+                    # Check which top fit option was selected by the user (only pick one)
+                    if "tops_fit_selector" in st.session_state and "tops_fit" in st.session_state.fit_adjustments:
+                        selected_fit = st.session_state.fit_adjustments["tops_fit"]
+                        selected_top_fit = selected_fit
+                        user_selected_fits["tops_fit"] = selected_fit
+                        fit_adjustments_prompt.append(f"CRITICAL: The uploaded top MUST be fitted in a {selected_fit.upper()} style on the model")
+                        
+                        # Add detailed descriptions based on the selected fit
+                        if selected_fit == "Oversized":
+                            fit_adjustments_prompt.append("The uploaded top should appear noticeably loose and roomy on the model, with extra fabric draping naturally")
+                        elif selected_fit == "Loose":
+                            fit_adjustments_prompt.append("The uploaded top should have a comfortable relaxed fit that doesn't cling to the body")
+                        elif selected_fit == "Regular":
+                            fit_adjustments_prompt.append("The uploaded top should have a standard fit that follows the body's shape without being tight or loose")
+                        elif selected_fit == "Slim":
+                            fit_adjustments_prompt.append("The uploaded top should have a slim fit that follows the contours of the body closely")
+                    
+                    # Only add shirt/blouse fit if tops_fit wasn't already selected
+                    elif "shirt_blouse_fit_selector" in st.session_state and "shirt_blouse_fit" in st.session_state.fit_adjustments:
+                        selected_fit = st.session_state.fit_adjustments["shirt_blouse_fit"]
+                        selected_top_fit = selected_fit
+                        user_selected_fits["shirt_blouse_fit"] = selected_fit
+                        fit_adjustments_prompt.append(f"CRITICAL: The uploaded top MUST be fitted in a {selected_fit.upper()} style on the model")
+                        
+                        # Add detailed descriptions for blouse fits
+                        if selected_fit == "Boxy":
+                            fit_adjustments_prompt.append("The uploaded top should have a square, boxy shape that doesn't taper at the waist")
+                        elif selected_fit == "Tailored":
+                            fit_adjustments_prompt.append("The uploaded top should have a precisely fitted appearance with subtle shaping at the waist")
+                        elif selected_fit == "Loose":
+                            fit_adjustments_prompt.append("The uploaded top should have a comfortable relaxed fit with flowing fabric")
+                        elif selected_fit == "Regular":
+                            fit_adjustments_prompt.append("The uploaded top should have a standard fit that follows the body's shape without being tight or loose")
+                        elif selected_fit == "Slim":
+                            fit_adjustments_prompt.append("The uploaded top should have a slim fit that follows the contours of the body closely")
+                    
+                    # Only include the bottom fit options if user specifically selected them
+                    # and if they actually correspond to the model's bottoms
+                    if "pants_fit_selector" in st.session_state and "pants_fit" in st.session_state.fit_adjustments and "pants" in bottom_style.lower():
+                        selected_fit = st.session_state.fit_adjustments["pants_fit"]
+                        user_selected_fits["pants_fit"] = selected_fit
+                        fit_adjustments_prompt.append(f"The model's {bottom_color} pants should have a {selected_fit.lower()} fit")
+                        selected_bottom_fit = selected_fit
+                    
+                    if "jeans_fit_selector" in st.session_state and "jeans_fit" in st.session_state.fit_adjustments and "denim" in bottom_style.lower():
+                        selected_fit = st.session_state.fit_adjustments["jeans_fit"]
+                        user_selected_fits["jeans_fit"] = selected_fit
+                        fit_adjustments_prompt.append(f"The model's {bottom_color} jeans should have a {selected_fit.lower()} fit")
+                        selected_bottom_fit = selected_fit
+                    
+                    if "skirts_fit_selector" in st.session_state and "skirts_fit" in st.session_state.fit_adjustments and "skirt" in bottom_style.lower():
+                        selected_fit = st.session_state.fit_adjustments["skirts_fit"]
+                        user_selected_fits["skirts_fit"] = selected_fit
+                        fit_adjustments_prompt.append(f"The model's skirt should be a {selected_fit.lower()} style")
+                        selected_bottom_fit = selected_fit
+                
+                # For men's garments
+                else:
+                    # Check which top fit option was selected by the user (only pick one)
+                    if "shirt_fit_selector" in st.session_state and "shirt_fit" in st.session_state.fit_adjustments:
+                        selected_fit = st.session_state.fit_adjustments["shirt_fit"]
+                        selected_top_fit = selected_fit
+                        user_selected_fits["shirt_fit"] = selected_fit
+                        fit_adjustments_prompt.append(f"CRITICAL: The uploaded top MUST be fitted in a {selected_fit.upper()} style on the model")
+                        
+                        # Add detailed descriptions based on the selected fit
+                        if selected_fit == "Tailored":
+                            fit_adjustments_prompt.append("The uploaded top should have a precisely fitted appearance with subtle tapering at the waist")
+                        elif selected_fit == "Loose":
+                            fit_adjustments_prompt.append("The uploaded top should appear relaxed and comfortable with extra room throughout")
+                        elif selected_fit == "Regular":
+                            fit_adjustments_prompt.append("The uploaded top should have a standard fit that follows the body's shape without being tight or loose")
+                        elif selected_fit == "Slim":
+                            fit_adjustments_prompt.append("The uploaded top should have a slim fit that follows the contours of the body closely")
+                    
+                    # Only add t-shirt fit if shirt_fit wasn't already selected
+                    elif "tshirt_fit_selector" in st.session_state and "tshirt_fit" in st.session_state.fit_adjustments:
+                        selected_fit = st.session_state.fit_adjustments["tshirt_fit"]
+                        selected_top_fit = selected_fit
+                        user_selected_fits["tshirt_fit"] = selected_fit
+                        fit_adjustments_prompt.append(f"CRITICAL: The uploaded top MUST be fitted in a {selected_fit.upper()} style on the model")
+                        
+                        # Add detailed descriptions for t-shirt fits
+                        if selected_fit == "Oversized":
+                            fit_adjustments_prompt.append("The uploaded top should appear noticeably loose and roomy on the model, with dropped shoulders and extra fabric length and width")
+                        elif selected_fit == "Regular":
+                            fit_adjustments_prompt.append("The uploaded top should have a standard fit that follows the body's shape without being tight or loose")
+                        elif selected_fit == "Slim":
+                            fit_adjustments_prompt.append("The uploaded top should have a slim fit that follows the contours of the body closely")
+                    
+                    # Only include the bottom fit options if user specifically selected them
+                    # and if they actually correspond to the model's bottoms
+                    if "pants_fit_selector" in st.session_state and "pants_fit" in st.session_state.fit_adjustments and "pants" in bottom_style.lower():
+                        selected_fit = st.session_state.fit_adjustments["pants_fit"]
+                        user_selected_fits["pants_fit"] = selected_fit
+                        fit_adjustments_prompt.append(f"The model's {bottom_color} pants should have a {selected_fit.lower()} fit")
+                        selected_bottom_fit = selected_fit
+                    
+                    if "jeans_fit_selector" in st.session_state and "jeans_fit" in st.session_state.fit_adjustments and "denim" in bottom_style.lower():
+                        selected_fit = st.session_state.fit_adjustments["jeans_fit"]
+                        user_selected_fits["jeans_fit"] = selected_fit
+                        fit_adjustments_prompt.append(f"The model's {bottom_color} jeans should have a {selected_fit.lower()} fit")
+                        selected_bottom_fit = selected_fit
+                    
+                    if "shorts_fit_selector" in st.session_state and "shorts_fit" in st.session_state.fit_adjustments and "short" in bottom_style.lower():
+                        selected_fit = st.session_state.fit_adjustments["shorts_fit"]
+                        user_selected_fits["shorts_fit"] = selected_fit
+                        fit_adjustments_prompt.append(f"The model's {bottom_color} shorts should have a {selected_fit.lower()} fit")
+                        selected_bottom_fit = selected_fit
+                
+                # Add a summary of what we're adjusting
+                if selected_top_fit:
+                    fit_adjustments_prompt.insert(1, f"Apply a {selected_top_fit.upper()} fit to the uploaded apparel")
+                
+                if selected_bottom_fit:
+                    fit_adjustments_prompt.append(f"The model's bottom should have a {selected_bottom_fit.upper()} fit")
+                
+                # Combine into a string
+                fit_details = ". ".join(fit_adjustments_prompt)
+                
+                # Create a new custom prompt with the fit details
+                new_custom_prompt = fit_details
+                
+                # Temporarily store the adjusted prompt
+                temp_prompt = new_custom_prompt
+                
+                # Regenerate the photoshoot with the updated fit adjustments
+                with st.spinner("Applying fit adjustments and generating new photoshoot..."):
+                    # Temporarily update the photoshoot custom prompt
+                    st.session_state.photoshoot_custom_prompt = temp_prompt
+                    
+                    # Fit apparel on model with the updated custom prompt
+                    adjusted_image, error, adjusted_high_quality = imagen_handler.fit_apparel_on_model(
+                        st.session_state.apparel_image,
+                        st.session_state.model_attributes,
+                        pose,
+                        model_image=st.session_state.model_image,
+                        photoshoot_settings=st.session_state.photoshoot_settings
+                    )
+                    
+                    if adjusted_image:
+                        # Store the adjusted image data for history
+                        adjustment_data = {
+                            "image": adjusted_image,
+                            "high_quality": adjusted_high_quality,
+                            "timestamp": time.time(),
+                            "fit_details": fit_details,
+                            "fit_adjustments": dict(st.session_state.fit_adjustments)
+                        }
+                        
+                        # Add to adjusted images list
+                        st.session_state.adjusted_images.append(adjustment_data)
+                        
+                        # Show success and the new image
+                        st.success("Fit adjustments applied successfully! New image generated.")
+                        
+                        # Display the newly generated image
+                        st.subheader(f"Adjusted Photoshoot with {gender} Clothing Fit")
+                        st.image(adjusted_image, caption=f"Fit Adjustments: {fit_details}", width="stretch")
+                        
+                        # Create columns for the download buttons for this adjusted image
+                        adj_col1, adj_col2 = st.columns(2)
+                        
+                        # Download option for the adjusted composite image
+                        adj_buf = io.BytesIO()
+                        adjusted_image.save(adj_buf, format="PNG")
+                        adj_byte_im = adj_buf.getvalue()
+                        
+                        with adj_col1:
+                            st.download_button(
+                                label="Download Adjusted Composite",
+                                data=adj_byte_im,
+                                file_name=f"adjusted_photoshoot_{int(time.time())}.png",
+                                mime="image/png"
+                            )
+                        
+                        # Download option for just the high-quality adjusted image
+                        if adjusted_high_quality:
+                            adj_hq_buf = io.BytesIO()
+                            adjusted_high_quality.save(adj_hq_buf, format="PNG", quality=100)
+                            adj_hq_byte_im = adj_hq_buf.getvalue()
+                            
+                            with adj_col2:
+                                st.download_button(
+                                    label="Download Adjusted HD Model Only",
+                                    data=adj_hq_byte_im,
+                                    file_name=f"adjusted_model_{int(time.time())}.png",
+                                    mime="image/png",
+                                    help="Download just the high-quality image of the model wearing the adjusted apparel"
+                                )
+                    else:
+                        st.error(f"Error applying fit adjustments: {error}")
+            
+            # Display adjustment history if we have any
+            if "adjusted_images" in st.session_state and st.session_state.adjusted_images:
+                st.markdown("---")
+                with st.expander("Previous Fit Adjustments", expanded=True):
+                    st.subheader("Adjustment History")
+                    st.info(f"You have {len(st.session_state.adjusted_images)} previous fit adjustments.")
+                    
+                    # Show the history of adjustments
+                    for i, adjustment in enumerate(st.session_state.adjusted_images[:-1] if len(st.session_state.adjusted_images) > 0 else []):
+                        st.markdown(f"### Adjustment {i+1}")
+                        st.markdown(f"**Fit Details:** {adjustment['fit_details']}")
+                        st.image(adjustment['image'], caption=f"Adjustment {i+1} - {time.strftime('%H:%M:%S', time.localtime(adjustment['timestamp']))}", width=300)
+                        
+                        # Download buttons for this historical adjustment
+                        hist_col1, hist_col2 = st.columns(2)
+                        
+                        # Download option for this historical composite
+                        hist_buf = io.BytesIO()
+                        adjustment['image'].save(hist_buf, format="PNG")
+                        hist_byte_im = hist_buf.getvalue()
+                        
+                        with hist_col1:
+                            st.download_button(
+                                label=f"Download Adjustment {i+1}",
+                                data=hist_byte_im,
+                                file_name=f"adjustment_{i+1}_{int(adjustment['timestamp'])}.png",
+                                mime="image/png"
+                            )
+                        
+                        # Download option for the high-quality historical image
+                        if 'high_quality' in adjustment and adjustment['high_quality']:
+                            hist_hq_buf = io.BytesIO()
+                            adjustment['high_quality'].save(hist_hq_buf, format="PNG", quality=100)
+                            hist_hq_byte_im = hist_hq_buf.getvalue()
+                            
+                            with hist_col2:
+                                st.download_button(
+                                    label=f"Download HD Adjustment {i+1}",
+                                    data=hist_hq_byte_im,
+                                    file_name=f"hd_adjustment_{i+1}_{int(adjustment['timestamp'])}.png",
+                                    mime="image/png"
+                                )
 
 # Footer
 st.sidebar.markdown("---")
