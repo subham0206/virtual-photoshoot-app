@@ -342,7 +342,9 @@ class ImagenHandler:
         model_attributes: Dict[str, str],
         pose: str,
         model_image: Image.Image = None,
-        photoshoot_settings: Dict[str, Any] = None
+        photoshoot_settings: Dict[str, Any] = None,
+        styling_prompt: str = "",
+        apparel_color: str = None
     ) -> Tuple[Optional[Image.Image], Optional[str], Optional[Image.Image]]:
         """
         Generate an image of apparel fitted on a model with the specified attributes
@@ -353,6 +355,8 @@ class ImagenHandler:
             pose: The desired pose
             model_image: Optional previously generated model image
             photoshoot_settings: Optional dictionary with photoshoot settings (background, lighting, view angle)
+            styling_prompt: Optional styling instructions for the apparel
+            apparel_color: Optional color to change the apparel to (hex code)
             
         Returns:
             Tuple containing:
@@ -394,73 +398,103 @@ class ImagenHandler:
             # Analyze the apparel image to get features
             features = extract_apparel_features(apparel_image)
             
-            # Get facial expression if available
+            # Check if we have a facial expression in model attributes
             facial_expression = model_attributes.get("facial_expression", "Neutral")
             
-            # Check if we have a color change request in session state
-            import streamlit as st
-            apparel_color = None
-            if "apparel_color" in st.session_state and st.session_state.apparel_color:
-                apparel_color = st.session_state.apparel_color
-                # Update the features to reflect the selected color
-                features["dominant_color"] = apparel_color
-                
-            # Check for photoshoot custom prompt in session state
-            photoshoot_custom_prompt = ""
-            if "photoshoot_custom_prompt" in st.session_state and st.session_state.photoshoot_custom_prompt:
-                photoshoot_custom_prompt = st.session_state.photoshoot_custom_prompt
-                
-            # Check if the custom prompt contains specific overrides
-            has_fit_style_override = "Fit style:" in photoshoot_custom_prompt
-            has_texture_override = "Texture:" in photoshoot_custom_prompt
-            has_color_override = "Color adjustments:" in photoshoot_custom_prompt
-            has_drape_override = "Drape and movement:" in photoshoot_custom_prompt
-            has_strap_override = "Strap/neckline details:" in photoshoot_custom_prompt
-            has_styling_override = "Styling instructions:" in photoshoot_custom_prompt
+            # Check if the custom prompt contains specific overrides from styling prompt
+            has_fit_style_override = "fit" in styling_prompt.lower() if styling_prompt else False
+            has_texture_override = "texture" in styling_prompt.lower() if styling_prompt else False
+            has_color_override = False  # Will be set to True if apparel_color is provided
+            has_drape_override = "drape" in styling_prompt.lower() or "flow" in styling_prompt.lower() if styling_prompt else False
+            has_strap_override = "strap" in styling_prompt.lower() or "neckline" in styling_prompt.lower() if styling_prompt else False
+            has_sleeve_override = "sleeve" in styling_prompt.lower() if styling_prompt else False
+            has_styling_override = styling_prompt != "" if styling_prompt else False
             
-            # Create a comprehensive description of the model using all model attributes
-            model_description = (
-                f"{model_attributes['gender']} model, {model_attributes['ethnicity']}, "
-                f"{model_attributes['height']} tall with a {model_attributes['build'].lower()} build, "
-                f"{model_attributes['hair_color'].lower()} hair in {model_attributes['hair_style'].lower()} style, "
-                f"{model_attributes['skin'].lower()} skin, "
-                f"wearing {model_attributes['bottom_color'].lower()} {model_attributes['bottom_style'].lower()} pants "
-                f"and {model_attributes['shoe_color'].lower()} {model_attributes['shoe_style'].lower()} shoes"
-            )
+            # Update color override flag if apparel_color is provided
+            if apparel_color:
+                has_color_override = True
             
+            # Create a comprehensive description of the model using available model attributes
+            model_description_parts = []
+            
+            # Add basic model attributes
+            if 'gender' in model_attributes:
+                model_description_parts.append(f"{model_attributes['gender']} model")
+            
+            if 'ethnicity' in model_attributes:
+                model_description_parts.append(model_attributes['ethnicity'])
+            
+            if 'skin_tone' in model_attributes:
+                model_description_parts.append(f"with {model_attributes['skin_tone']}")
+            
+            if 'build' in model_attributes:
+                model_description_parts.append(f"{model_attributes['build']} build")
+            
+            if 'hair_color' in model_attributes and 'hair_style' in model_attributes:
+                model_description_parts.append(f"{model_attributes['hair_color']} {model_attributes['hair_style']} hair")
+            
+            if 'facial_hair' in model_attributes and model_attributes.get('facial_hair', "None") != "None":
+                model_description_parts.append(f"with {model_attributes['facial_hair']}")
+            
+            # Join all parts to create the description
+            model_description = ", ".join(model_description_parts)
+            
+            # Get a simplified apparel description
+            apparel_description = f"{features['dominant_color']} {features['apparel_type']}"
+            if features['pattern_type'] != "solid":
+                apparel_description = f"{features['pattern_type']} {apparel_description}"
+                
+            if apparel_color:
+                apparel_description = f"{apparel_color} {features['apparel_type']}"
+                
             # Create a prompt that references the specific model already generated
             base_prompt = f"""
-            Create a high-resolution photorealistic image of the EXACT SAME {model_attributes['gender'].lower()} model from the reference image in a {pose.lower()} pose, 
-            from a {view_angle.lower()} angle, now wearing the uploaded apparel. 
+            Create a high-resolution photorealistic image of the EXACT SAME {model_attributes.get('gender', '').lower()} model from the reference image, now wearing the uploaded {apparel_description}. 
             
-            This is {model_description}.
+            This is an image editing task: the model is {model_description}, and must now be shown wearing the exact apparel from the uploaded image.
             
-            The model MUST MATCH THE EXACT SAME PERSON shown in the reference image, with:
-            - SAME {model_attributes['hair_color'].lower()} {model_attributes['hair_style'].lower()} hairstyle
-            - SAME {model_attributes['ethnicity'].lower()} features and {model_attributes['skin'].lower()} skin
-            - SAME {model_attributes['build'].lower()} body type
-            - SAME {model_attributes['bottom_color'].lower()} {model_attributes['bottom_style'].lower()} pants/bottoms
-            - SAME {model_attributes['shoe_color'].lower()} {model_attributes['shoe_style'].lower()} shoes
-            - {facial_expression} facial expression
+            The model should be in a {pose.lower()} pose from a {view_angle.lower()} angle. 
+            The model should have exactly the same appearance as the reference image.
             
-            The apparel MUST maintain these precise characteristics:
-            - Type: {features['apparel_type']}"""
+            IMPORTANT: The model MUST be wearing the apparel shown in the uploaded image. This is CRITICAL.
             
-            # Only include color if not overridden by custom prompt
+            The model MUST MATCH THE EXACT SAME PERSON shown in the reference image, with:"""
+            
+            # Add model attributes that are available
+            if 'hair_color' in model_attributes and 'hair_style' in model_attributes:
+                base_prompt += f"\n- SAME {model_attributes['hair_color'].lower()} {model_attributes['hair_style'].lower()} hairstyle"
+            
+            if 'ethnicity' in model_attributes and 'skin_tone' in model_attributes:
+                base_prompt += f"\n- SAME {model_attributes['ethnicity'].lower()} features and {model_attributes['skin_tone'].lower()}"
+            
+            if 'build' in model_attributes:
+                base_prompt += f"\n- SAME {model_attributes['build'].lower()} body type"
+            
+            base_prompt += f"""
+            
+            The apparel from the uploaded image MUST:
+            - Be clearly visible on the model
+            - Be the primary focus of the image
+            - Maintain its original design and shape"""
+            
+            # Only include color if not overridden by apparel_color
             if not has_color_override:
-                base_prompt += f"\n- Color: PRECISELY {features['dominant_color']} (must match exactly)"
+                base_prompt += f"\n- Keep the original {features['dominant_color']} color exactly as shown"
+            else:
+                # Add the color change instruction
+                base_prompt += f"\n- Be changed to {apparel_color} while preserving all details and patterns"
             
             # Only include pattern if not overridden by custom prompt
             if not has_texture_override:
-                base_prompt += f"\n- Pattern: {features['pattern_type']} (preserve all pattern details)"
+                base_prompt += f"\n- Preserve the {features['pattern_type']} pattern exactly as shown"
             
             # Only include texture if not overridden by custom prompt
             if not has_texture_override:
-                base_prompt += "\n- Texture: Maintain the exact fabric texture and material appearance"
+                base_prompt += "\n- Maintain the exact fabric texture and material appearance"
             
             # Only include fit if not overridden by custom prompt
             if not has_fit_style_override and not has_drape_override:
-                base_prompt += "\n- Size and fit: The apparel should fit the model while maintaining its original proportions"
+                base_prompt += "\n- Fit the model appropriately while maintaining its original proportions"
             
             base_prompt += f"""
             
@@ -471,23 +505,23 @@ class ImagenHandler:
             The image should be ultra high-quality, well-lit photography with appropriate shadows,
             suitable for an e-commerce or fashion catalog.
             
-            CRITICAL: The primary objective is to show the EXACT SAME model from the previous step now wearing
-            the EXACT SAME apparel with NO changes to the model's features, clothing, or accessories except for adding the new apparel.
+            CRITICAL: The primary objective is to show the EXACT SAME model from the reference image now wearing
+            the EXACT SAME apparel from the uploaded image. This is a virtual try-on visualization.
             """
             
-            # Add custom photoshoot prompt if available, marking it as highest priority
-            if photoshoot_custom_prompt:
-                base_prompt += f"\n\n### PRIORITY CUSTOM DETAILS (THESE OVERRIDE ANY CONFLICTING INSTRUCTIONS ABOVE) ###\n{photoshoot_custom_prompt}\n"
-                base_prompt += "\nThe above custom details MUST be strictly followed even if they conflict with earlier specifications.\n"
+            # Add styling prompt if available, marking it as highest priority
+            if styling_prompt:
+                base_prompt += f"\n\n### PRIORITY STYLING INSTRUCTIONS (THESE OVERRIDE ANY CONFLICTING INSTRUCTIONS ABOVE) ###\n{styling_prompt}\n"
+                base_prompt += "\nThe above styling details MUST be strictly followed even if they conflict with earlier specifications.\n"
             
             # Include both the model image and apparel image in the prompt if available
             multimodal_content = []
             
-            # Add the apparel image as reference
+            # Add the apparel image as reference - make this first for emphasis
             multimodal_content.append({
                 "role": "user",
                 "parts": [{
-                    "text": "This is the exact apparel that needs to be fitted on the model. Make sure to maintain its exact color, pattern, and style:"
+                    "text": "This is the EXACT APPAREL that needs to be placed on the model. The model MUST be wearing THIS SPECIFIC ITEM in the final image:"
                 }, {
                     "inline_data": {
                         "mime_type": "image/jpeg",
@@ -501,7 +535,7 @@ class ImagenHandler:
                 multimodal_content.append({
                     "role": "user",
                     "parts": [{
-                        "text": f"This is the exact model that should wear the apparel. Maintain ALL aspects of the model's appearance (hair style, hair color, facial features, body type, pants/bottoms, and shoes). This model is: {model_description}"
+                        "text": f"This is the exact model who should wear the apparel. Maintain ALL aspects of the model's appearance (hair style, hair color, facial features, body type). This model is: {model_description}"
                     }, {
                         "inline_data": {
                             "mime_type": "image/jpeg",
@@ -510,46 +544,43 @@ class ImagenHandler:
                     }]
                 })
             
-            # If color change is requested, add it to the prompt
-            color_change_text = ""
-            if apparel_color and not has_color_override:  # Only add if not already overridden in custom prompt
-                color_change_text = f"Important: Change the color of the apparel to exactly {apparel_color} while preserving its texture and patterns."
+            # If color change is requested, emphasize it again
+            color_emphasis = ""
+            if apparel_color:  
+                color_emphasis = f"\nIMPORTANT: The apparel should be {apparel_color} in color instead of its original color."
             
-            # Prepare final prompt combining text and images
+            # Prepare final prompt combining text and images with stronger emphasis on the task
             prompt_text = f"""
-            Create a high-definition image where the model is wearing the exact apparel shown in the reference image.
+            TASK: Create an image where the model from the reference image is wearing the exact apparel from the uploaded image.
+            
             {base_prompt}
             
-            Important details about the pose and expression:
-            - The model should be in a {pose.lower()} pose
-            - The model should have a {facial_expression.lower()} facial expression
-            - The model should be photographed from a {view_angle.lower()} angle
+            Essential requirements:
+            1. The model MUST be WEARING the APPAREL from the uploaded image - this is the MOST IMPORTANT requirement
+            2. The model's pose should be {pose.lower()}
+            3. The model should have a {facial_expression.lower()} facial expression
+            4. The view angle should be {view_angle.lower()}
+            {color_emphasis}
+            
+            Make absolutely certain that:
+            - The apparel from the uploaded image is CLEARLY VISIBLE on the model
+            - The apparel fits the model appropriately
+            - The model maintains their exact appearance from the reference image
+            
+            This is a virtual try-on visualization for e-commerce where customers want to see how the specific apparel item will look when worn.
             """
             
             # Only add generic fit instructions if not overridden
             if not has_fit_style_override and not has_drape_override:
-                prompt_text += "- Ensure the apparel is clearly visible and fitted naturally\n"
+                prompt_text += "\n- Ensure the apparel is clearly visible and fitted naturally\n"
                 
-            prompt_text += f"""
-            - DO NOT CHANGE any of these model features:
-              * Hair style: Keep the {model_attributes['hair_style'].lower()} style exactly as shown
-              * Hair color: Keep the {model_attributes['hair_color'].lower()} hair color exactly as shown
-              * Bottoms: Keep the {model_attributes['bottom_color'].lower()} {model_attributes['bottom_style'].lower()} pants/bottoms exactly as shown
-              * Shoes: Keep the {model_attributes['shoe_color'].lower()} {model_attributes['shoe_style'].lower()} shoes exactly as shown
-              * Body type: Keep the {model_attributes['build'].lower()} build exactly as shown
-            {color_change_text}
-            """
+            # Add styling prompt to final prompt text if available
+            if styling_prompt:
+                prompt_text += f"\n\nSTRICTLY APPLY THESE CUSTOM STYLING AND FIT DETAILS (HIGHEST PRIORITY):\n{styling_prompt}\n"
+                prompt_text += "\nThese styling details OVERRIDE any conflicting instructions above."
             
-            # Only add pattern preservation if not overridden
-            if not has_texture_override:
-                prompt_text += "- The apparel's pattern must be preserved exactly\n"
-                
-            prompt_text += "- Generate at maximum possible resolution and quality for best results\n"
-            
-            # Add custom photoshoot prompt to final prompt text if available
-            if photoshoot_custom_prompt:
-                prompt_text += f"\n\nSTRICTLY APPLY THESE CUSTOM STYLING AND FIT DETAILS (HIGHEST PRIORITY):\n{photoshoot_custom_prompt}\n"
-                prompt_text += "\nThese custom details OVERRIDE any conflicting instructions above."
+            # Add a final instruction to emphasize the critical requirement
+            prompt_text += "\n\nCRITICAL REMINDER: The final image MUST show the model WEARING the apparel from the uploaded image."
             
             multimodal_content.append({
                 "role": "user",
@@ -559,7 +590,7 @@ class ImagenHandler:
             })
             
             # For debugging
-            print(f"Using custom photoshoot prompt: {photoshoot_custom_prompt[:100]}..." if photoshoot_custom_prompt else "No custom photoshoot prompt")
+            print(f"Using styling prompt: {styling_prompt[:100]}..." if styling_prompt else "No styling prompt")
             
             # Try the gemini model for apparel fitting using multimodal input
             try:
@@ -567,11 +598,11 @@ class ImagenHandler:
                 
                 # First approach: Use multimodal input if available
                 if model_image is not None:
-                    # Create a conversation that includes both images
+                    # Create a conversation that includes both images with higher temperature for creativity
                     gemini_response = self.gemini_image_model.generate_content(
                         multimodal_content,
                         generation_config={
-                            "temperature": 0.2,
+                            "temperature": 0.7,  # Increased from 0.2 to allow more creative freedom
                         }
                     )
                     
@@ -630,13 +661,20 @@ class ImagenHandler:
                                     font = ImageFont.load_default()
                                     title_font = font
                                 
-                                caption = f"Virtual Photoshoot - {pose} Pose - {view_angle} - {facial_expression} Expression"
+                                caption = f"Virtual Photoshoot - {pose} Pose - {view_angle}"
                                 draw.text((width//2 - 200, 20), caption, fill=(0, 0, 0), font=title_font)
                                 draw.text((10, 40), "Original Apparel", fill=(0, 0, 0), font=font)
                                 draw.text((width//3 + 10, 40), "Your Model", fill=(0, 0, 0), font=font)
                                 draw.text((width//2 - 100, height//3 + 60), "Final Result", fill=(0, 0, 0), font=font)
                                 
                                 return composite, "Successfully fitted apparel on model", high_quality_fitted
+
+                    # If we get here, no image was found in the response
+                    print("No image found in Gemini response")
+                    return None, "Failed to generate image with apparel fitted on model", None
+
+                else:
+                    return None, "Model image is required for fitting apparel", None
 
             except Exception as multimodal_error:
                 print(f"Multimodal approach failed: {multimodal_error}")

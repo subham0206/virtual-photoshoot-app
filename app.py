@@ -4,21 +4,31 @@ import io
 from PIL import Image
 import time
 from utils import ImagenHandler, extract_apparel_features
+from openai_handler import OpenAIDALLE3Handler
+from hybrid_generation import HybridApparelFittingHandler
 import socket
 import sys
 
-# Set the API key
+# Set the API keys
 try:
     # Try to get API key from Streamlit secrets (for deployment)
-    api_key = st.secrets["GOOGLE_API_KEY"]
+    google_api_key = st.secrets["GOOGLE_API_KEY"]
+    openai_api_key = st.secrets["OPENAI_API_KEY"]
 except:
     # Fallback to hardcoded key for local development
-    api_key = ""
+    google_api_key = ""
+    openai_api_key = ""
 
-# Initialize with recommended GenAI models: "imagen-4.0-generate-001" and "gemini-2.5-flash-image-preview"
-imagen_handler = ImagenHandler(api_key, timeout=90, 
+# Initialize handlers for all approaches
+imagen_handler = ImagenHandler(google_api_key, timeout=90, 
                               imagen_model="models/imagen-4.0-generate-001",
                               gemini_image_model="gemini-2.5-flash-image-preview")
+
+# Initialize OpenAI DALL-E 3 handler
+dalle3_handler = OpenAIDALLE3Handler(openai_api_key, timeout=90, model="dall-e-3")
+
+# Initialize hybrid approach handler
+hybrid_handler = HybridApparelFittingHandler(openai_api_key, google_api_key, timeout=90)
 
 # Set page configuration
 st.set_page_config(
@@ -70,15 +80,206 @@ This application allows you to upload apparel and fit it onto an AI-generated mo
 The app preserves the color, texture, and size of your apparel while placing it on a model with your chosen attributes.
 """)
 
+# Predefined models data
+PREDEFINED_MODELS = {
+    "Male": [
+        {
+            "id": "m1",
+            "name": "African American – Tall Athletic",
+            "description": "Tall athletic build, fade haircut with curly top",
+            "image_path": "models/male_african_american_tall.png",
+            "attributes": {
+                "gender": "Male",
+                "ethnicity": "African American",
+                "skin_tone": "Dark skin",
+                "build": "Tall athletic",
+                "hair_color": "Black",
+                "hair_style": "Fade with curly top",
+                "facial_hair": "Light stubble"
+            }
+        },
+        {
+            "id": "m2",
+            "name": "Spanish",
+            "description": "Tan skin, slim build, brown buzz cut",
+            "image_path": "models/male_spanish.png",
+            "attributes": {
+                "gender": "Male",
+                "ethnicity": "Spanish",
+                "skin_tone": "Tan skin",
+                "build": "Slim", # Changed from Athletic to Slim
+                "hair_color": "Brown",
+                "hair_style": "Buzz cut",
+                "facial_hair": "None"
+            }
+        },
+        {
+            "id": "m3",
+            "name": "Japanese",
+            "description": "Athletic build, dark brown buzz cut",
+            "image_path": "models/male_japanese.png",
+            "attributes": {
+                "gender": "Male",
+                "ethnicity": "Japanese",
+                "skin_tone": "Light skin",
+                "build": "Athletic",
+                "hair_color": "Dark brown",
+                "hair_style": "Buzz cut",
+                "facial_hair": "None"
+            }
+        },
+        {
+            "id": "m4",
+            "name": "Middle Eastern",
+            "description": "Tall slender build, buzz cut, light stubble",
+            "image_path": "models/male_middle_eastern.png",
+            "attributes": {
+                "gender": "Male",
+                "ethnicity": "Middle Eastern",
+                "skin_tone": "Medium skin",
+                "build": "Tall slender",
+                "hair_color": "Black",
+                "hair_style": "Buzz cut", # Changed from wavy hair to buzz cut
+                "facial_hair": "Light stubble" # Changed from beard to stubble
+            }
+        },
+        {
+            "id": "m5",
+            "name": "Mixed Race",
+            "description": "Tall athletic build, buzz cut, light stubble",
+            "image_path": "models/male_mixed_race.png",
+            "attributes": {
+                "gender": "Male",
+                "ethnicity": "Mixed Race (Black/Caucasian)",
+                "skin_tone": "Medium skin",
+                "build": "Tall athletic",
+                "hair_color": "Dark brown",
+                "hair_style": "Buzz cut", # Changed from curly hair to buzz cut
+                "facial_hair": "Light stubble"
+            }
+        }
+    ],
+    "Female": [
+        {
+            "id": "f1",
+            "name": "African American – Tall",
+            "description": "Tall slender build, box braids",
+            "image_path": "models/female_african_american_tall.png",
+            "attributes": {
+                "gender": "Female",
+                "ethnicity": "African American",
+                "skin_tone": "Dark skin",
+                "build": "Tall slender",
+                "hair_color": "Black",
+                "hair_style": "Box braids" # Changed from long natural curly to box braids
+            }
+        },
+        {
+            "id": "f2",
+            "name": "Middle Eastern",
+            "description": "Tall slender build, long straight dark brown hair",
+            "image_path": "models/female_middle_eastern.png",
+            "attributes": {
+                "gender": "Female",
+                "ethnicity": "Middle Eastern",
+                "skin_tone": "Medium skin",
+                "build": "Tall slender",
+                "hair_color": "Dark brown",
+                "hair_style": "Long straight" # Changed from wavy windblown to straight
+            }
+        },
+        {
+            "id": "f3",
+            "name": "Mixed Race",
+            "description": "Tall slender build, medium-length curly blonde hair",
+            "image_path": "models/female_mixed_race.png",
+            "attributes": {
+                "gender": "Female",
+                "ethnicity": "Mixed Race (Asian/Caucasian)",
+                "skin_tone": "Light medium skin",
+                "build": "Tall slender",
+                "hair_color": "Blonde", # Changed from honey-brown to blonde
+                "hair_style": "Medium-length curly"
+            }
+        },
+        {
+            "id": "f4",
+            "name": "South Asian",
+            "description": "Tall slender build, shoulder-length wavy bob",
+            "image_path": "models/female_south_asian.png",
+            "attributes": {
+                "gender": "Female",
+                "ethnicity": "South Asian",
+                "skin_tone": "Medium skin",
+                "build": "Tall slender",
+                "hair_color": "Black",
+                "hair_style": "Shoulder-length wavy bob" # Changed from long straight to wavy bob
+            }
+        },
+        {
+            "id": "f5",
+            "name": "Native American",
+            "description": "Thin build, above sleeve length black hair",
+            "image_path": "models/female_native_american.png",
+            "attributes": {
+                "gender": "Female",
+                "ethnicity": "Native American",
+                "skin_tone": "Tan skin",
+                "build": "Thin",
+                "hair_color": "Black",
+                "hair_style": "Above sleeve length" # Changed from long to above sleeve length
+            }
+        }
+    ]
+}
+
+# Bella+Canvas color swatches - hex color codes
+BELLA_CANVAS_COLORS = {
+    "Black": "#000000",
+    "White": "#FFFFFF",
+    "Ash Gray": "#CDD0CD",
+    "Athletic Heather": "#D0D0D0",
+    "Dark Gray Heather": "#686868",
+    "Deep Heather": "#7C7C7C",
+    "Heather Navy": "#373F51",
+    "Heather Forest": "#2A4734",
+    "Kelly Green": "#4CAF50",
+    "Forest Green": "#1B4D3E",
+    "Olive": "#808000",
+    "Navy": "#000080",
+    "Royal Blue": "#4169E1",
+    "True Royal": "#2D68C4",
+    "Team Purple": "#3F2A7E",
+    "Purple": "#800080",
+    "Mauve": "#E0B0FF",
+    "Red": "#FF0000",
+    "Cardinal": "#C41E3A",
+    "Brick Red": "#CB4154",
+    "Coral": "#FF7F50",
+    "Orange": "#FFA500",
+    "Gold": "#FFD700",
+    "Yellow": "#FFFF00",
+    "Army": "#4B5320",
+    "Teal": "#008080",
+    "Aqua": "#00FFFF",
+    "Pink": "#FFC0CB",
+    "Soft Pink": "#FFCCCB",
+    "Maroon": "#800000",
+    "Brown": "#A52A2A",
+    "Tan": "#D2B48C"
+}
+
 # Create sidebar for app navigation
 st.sidebar.title("Navigation")
-page = st.sidebar.radio("Go to", ["Upload Apparel", "Generate Model", "Photoshoot"])
+page = st.sidebar.radio("Go to", ["Upload Apparel", "Select Model", "Photoshoot"])
 
 # Global session state to store uploaded image and generated model
 if "apparel_image" not in st.session_state:
     st.session_state.apparel_image = None
 if "model_image" not in st.session_state:
     st.session_state.model_image = None
+if "selected_model" not in st.session_state:
+    st.session_state.selected_model = None
 if "final_image" not in st.session_state:
     st.session_state.final_image = None
 if "model_attributes" not in st.session_state:
@@ -87,6 +288,16 @@ if "photoshoot_variations" not in st.session_state:
     st.session_state.photoshoot_variations = []
 if "network_retry_count" not in st.session_state:
     st.session_state.network_retry_count = 0
+    
+# Add session state variables for apparel attributes
+if "clothing_type" not in st.session_state:
+    st.session_state.clothing_type = "N/A"
+if "clothing_fit_style" not in st.session_state:
+    st.session_state.clothing_fit_style = "N/A"
+if "clothing_color" not in st.session_state:
+    st.session_state.clothing_color = "N/A"
+if "final_prompt" not in st.session_state:
+    st.session_state.final_prompt = ""
 
 # Display network status and advice in the sidebar
 with st.sidebar.expander("Network Status", expanded=False):
@@ -106,27 +317,369 @@ if page == "Upload Apparel":
         image = Image.open(uploaded_file)
         st.session_state.apparel_image = image
         
-        # Add color change option
-        with st.expander("Change Apparel Color", expanded=True):
+        # Add the three detailed clothing information sections
+        st.subheader("Clothing Information")
+        st.info("The information you provide below will be used to generate the final photoshoot image. All fields default to N/A.")
+        
+        # 1. Clothing Type Section
+        with st.expander("1. Clothing Type", expanded=True):
+            # Add a dedicated option for selecting B+C product types first
+            use_bc_products = st.checkbox("Use Bella+Canvas Product Types", value=False)
+            
+            if use_bc_products:
+                # B+C specific product types
+                clothing_type = st.selectbox(
+                    "Select Bella+Canvas Product Type",
+                    options=[
+                        "N/A",
+                        "Women's Cotton Spandex Legging",
+                        "Infant Jersey Short Sleeve One Piece",
+                        "Women's Micro Rib Baby Tee",
+                        "Women's Micro Rib Spaghetti Strap Tank",
+                        "Women's Micro Rib Muscle Crop Tank",
+                        "Women's Micro Rib Racer Tank",
+                        "Women's Baby Rib Tank",
+                        "Women's Micro Ribbed Tank",
+                        "Infant Triblend Short Sleeve One Piece",
+                        "Women's Micro Rib 3/4 Raglan Baby Tee",
+                        "Women's Micro Rib Raglan Baby Tee",
+                        "Women's Micro Rib Long Sleeve Baby Tee",
+                        "Unisex Jersey Short Sleeve Tee",
+                        "Infant Jersey Short Sleeve Tee",
+                        "Unisex Heather CVC Short Sleeve Tee",
+                        "Unisex EcoMax Short Sleeve Tee",
+                        "Toddler Jersey Short Sleeve Tee",
+                        "Unisex Made in the USA Jersey Short Sleeve Tee",
+                        "Youth Jersey Short Sleeve Tee",
+                        "Youth Heather CVC Short Sleeve Tee",
+                        "Mens Jersey Short Sleeve Tee With Curved Hem",
+                        "Unisex Jersey Short Sleeve V-Neck Tee",
+                        "Unisex Heather CVC Short Sleeve V-Neck Tee",
+                        "Men's Long Body Urban Tee",
+                        "Unisex 6 oz Heavyweight Tee",
+                        "Youth 6 oz Heavyweight Tee",
+                        "Men's Jersey Short Sleeve Pocket Tee",
+                        "Unisex 3/4 Sleeve Baseball Tee",
+                        "Toddler 3/4 Sleeve Baseball Tee",
+                        "Youth 3/4 Sleeve Baseball Tee",
+                        "Men's Heather CVC Raglan Tee",
+                        "Unisex Sueded Short Sleeve Tee",
+                        "Unisex Triblend Short Sleeve Tee",
+                        "Infant Triblend Short Sleeve Tee",
+                        "Toddler Triblend Short Sleeve Tee",
+                        "Youth Triblend Short Sleeve Tee",
+                        "Unisex Triblend Short Sleeve V-Neck Tee",
+                        "Unisex Jersey Tank",
+                        "Unisex Heather CVC Tank",
+                        "Youth Jersey Tank",
+                        "Youth Heather CVC Tank",
+                        "Unisex Jersey Muscle Tank",
+                        "Unisex Triblend Tank",
+                        "Unisex Jersey Long Sleeve Tee",
+                        "Unisex Heather CVC Long Sleeve Tee",
+                        "Youth Jersey Long Sleeve Tee",
+                        "Youth Heather CVC Long Sleeve Tee",
+                        "Toddler Jersey Long Sleeve Tee",
+                        "Unisex 6 oz Heavyweight Long Sleeve Tee",
+                        "Youth 6 oz Heavyweight Long Sleeve Tee",
+                        "Unisex Jersey Long Sleeve Hoodie",
+                        "Unisex Triblend Long Sleeve Tee",
+                        "Youth Triblend Long Sleeve Tee",
+                        "Unisex Poly-Cotton Short Sleeve Tee",
+                        "Unisex V-Neck Textured Tee",
+                        "Unisex Sponge Fleece Pullover Hoodie",
+                        "Toddler Sponge Fleece Pullover Hoodie",
+                        "Youth Sponge Fleece Pullover Hoodie",
+                        "Unisex Sponge Fleece Sweatshort",
+                        "Unisex Sponge Fleece Straight Leg Sweatpant",
+                        "Unisex Sponge Fleece Jogger Sweatpants",
+                        "Toddler Sponge Fleece Jogger Sweatpants",
+                        "Youth Sponge Fleece Jogger Sweatpants",
+                        "Unisex Sponge Fleece DTM Hoodie",
+                        "Unisex Sponge Fleece Long Scrunch Pant",
+                        "Unisex Sponge Fleece Full-Zip Hoodie",
+                        "Toddler Sponge Fleece Full- Zip Hoodie",
+                        "Youth Sponge Fleece Full-Zip Hoodie",
+                        "Unisex Sponge Fleece DTM Full-Zip Hoodie",
+                        "Women's Cutoff Sweatshort",
+                        "Unisex Sponge Fleece Raglan Sweatshirt",
+                        "Toddler Sponge Fleece Raglan Sweatshirt",
+                        "Youth Sponge Fleece Raglan Sweatshirt",
+                        "Unisex Triblend Fleece Zip Hoodie",
+                        "Unisex Sponge Fleece Classic Crewneck Sweatshirt",
+                        "Unisex Triblend Full-Zip Lightweight Hoodie",
+                        "Unisex Sponge Fleece Drop Shoulder Sweatshirt",
+                        "Unisex 7.5 oz Heavyweight Tee",
+                        "Unisex 7.5 oz Heavyweight Long Sleeve Tee",
+                        "Unisex 10 oz Heavyweight Crewneck Sweatshirt",
+                        "Unisex 10 oz Heavyweight Pullover Hoodie",
+                        "Unisex 10 oz Heavyweight Sweatpant",
+                        "Unisex Heavyweight Garment Dye Tee",
+                        "Unisex Heavyweight Garment Dye Long Sleeve Tee",
+                        "Women's Jersey Muscle Tank",
+                        "Women's Slim Fit Tee",
+                        "Women's Jersey Short Sleeve V-Neck Tee",
+                        "Women's Jersey Racerback Tank",
+                        "Women's 6 oz Heavyweight Tee",
+                        "Women's Relaxed Jersey Short Sleeve Tee",
+                        "Women's Relaxed Heather CVC Short Sleeve Tee",
+                        "Women's Relaxed Jersey Short Sleeve V-Neck Tee",
+                        "Women's Relaxed Heather CVC Short Sleeve V-Neck Tee",
+                        "Women's Relaxed Triblend Short Sleeve Tee",
+                        "Women's Relaxed Triblend Short Sleeve V-Neck Tee",
+                        "Womens Jersey Crop Tee",
+                        "Women's Jersey Long Sleeve Tee",
+                        "Women's Cropped Long Sleeve Tee",
+                        "Women's Poly-Cotton Crop Tee",
+                        "Women's Racerback Cropped Tank",
+                        "Women's Cropped Fleece Hoodie",
+                        "Women's Cropped Crew Fleece",
+                        "Women's Raglan Pullover Fleece",
+                        "Women's Crewneck Pullover",
+                        "Women's Classic Hooded Pullover",
+                        "Women's Triblend Short Sleeve Tee",
+                        "Women's Triblend Racerback Tank",
+                        "Women's Cropped Long Sleeve Hoodie",
+                        "Women's Flowy Racerback Tank",
+                        "Youth Flowy Racerback Tank",
+                        "Womens Flowy Scoop Muscle Tank",
+                        "Women's Flowy Muscle Tee with Rolled Cuff",
+                        "Women's Slouchy V-Neck Tee",
+                        "Women's Slouchy Tee",
+                        "Women's Slouchy Tank",
+                        "Women's Flowy Cropped Tee"
+                    ],
+                    help="Select the specific Bella+Canvas product type"
+                )
+                
+                st.info("You've selected a Bella+Canvas product type. This will be used in the photoshoot prompt.")
+                
+            else:
+                # Show regular clothing category options
+                clothing_category = st.selectbox(
+                    "Clothing Category",
+                    options=["N/A", "Tops", "Bottoms", "Footwear", "Accessories"],
+                    help="Select the category of clothing item"
+                )
+                
+                # Show relevant options based on the selected category
+                if clothing_category == "Tops":
+                    clothing_type = st.selectbox(
+                        "Top Type",
+                        options=["N/A", "T-shirt", "Blouse", "Hoodie", "Jacket", "Sweater", "Tank top", "Other"]
+                    )
+                    if clothing_type == "Other":
+                        custom_type = st.text_input("Specify Top Type")
+                        clothing_type = custom_type if custom_type else "Custom top"
+                    
+                elif clothing_category == "Bottoms":
+                    clothing_type = st.selectbox(
+                        "Bottom Type",
+                        options=["N/A", "Jeans", "Trousers", "Shorts", "Skirts", "Leggings", "Joggers", "Other"]
+                    )
+                    if clothing_type == "Other":
+                        custom_type = st.text_input("Specify Bottom Type")
+                        clothing_type = custom_type if custom_type else "Custom bottoms"
+                        
+                elif clothing_category == "Footwear":
+                    clothing_type = st.selectbox(
+                        "Footwear Type",
+                        options=["N/A", "Sneakers", "Boots", "Sandals", "Loafers", "Athletic shoes", "Heels", "Other"]
+                    )
+                    if clothing_type == "Other":
+                        custom_type = st.text_input("Specify Footwear Type")
+                        clothing_type = custom_type if custom_type else "Custom footwear"
+                        
+                elif clothing_category == "Accessories":
+                    clothing_type = st.selectbox(
+                        "Accessory Type",
+                        options=["N/A", "Belt", "Watch", "Jewelry", "Hat", "Bag", "Other"]
+                    )
+                    if clothing_type == "Other":
+                        custom_type = st.text_input("Specify Accessory Type")
+                        clothing_type = custom_type if custom_type else "Custom accessory"
+                else:
+                    clothing_type = "N/A"
+            
+            # Custom description field for additional details
+            custom_description = st.text_area(
+                "Additional Description (Optional)",
+                placeholder="Add any additional details about the clothing item"
+            )
+            
+            # Update session state
+            if clothing_type != "N/A" or custom_description:
+                full_type = f"{clothing_type}"
+                if custom_description:
+                    full_type += f" ({custom_description})"
+                st.session_state.clothing_type = full_type
+            else:
+                st.session_state.clothing_type = "N/A"
+        
+        # 2. Clothing Fit and Style Section
+        with st.expander("2. Clothing Fit and Style", expanded=True):
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                fit_type = st.selectbox(
+                    "Fit",
+                    options=["N/A", "Regular fit", "Oversized", "Loose fit", "Relaxed fit", "Slim fit", "Tight fit", "Other"]
+                )
+                if fit_type == "Other":
+                    custom_fit = st.text_input("Specify Fit")
+                    fit_type = custom_fit if custom_fit else "Custom fit"
+                
+                style_type = st.selectbox(
+                    "Style",
+                    options=["N/A", "Casual", "Athletic", "Streetwear", "Formal", "Business casual", "Other"]
+                )
+                if style_type == "Other":
+                    custom_style = st.text_input("Specify Style")
+                    style_type = custom_style if custom_style else "Custom style"
+            
+            with col2:
+                length_type = st.selectbox(
+                    "Length",
+                    options=["N/A", "Crop", "Knee-length", "Ankle-length", "Full-length", "Short", "Other"]
+                )
+                if length_type == "Other":
+                    custom_length = st.text_input("Specify Length")
+                    length_type = custom_length if custom_length else "Custom length"
+                
+                pattern_type = st.selectbox(
+                    "Pattern",
+                    options=["N/A", "Solid", "Striped", "Plaid", "Checkered", "Geometric", "Floral", "Other"]
+                )
+                if pattern_type == "Other":
+                    custom_pattern = st.text_input("Specify Pattern")
+                    pattern_type = custom_pattern if custom_pattern else "Custom pattern"
+            
+            fabric_type = st.selectbox(
+                "Fabric",
+                options=["N/A", "Denim", "Cotton", "Leather", "Silk", "Wool", "Linen", "Polyester", "Other"]
+            )
+            if fabric_type == "Other":
+                custom_fabric = st.text_input("Specify Fabric")
+                fabric_type = custom_fabric if custom_fabric else "Custom fabric"
+            
+            # Custom description field for additional fit/style details
+            fit_style_description = st.text_area(
+                "Additional Fit/Style Details (Optional)",
+                placeholder="Add any additional details about the fit or style"
+            )
+            
+            # Update session state
+            fit_style_parts = []
+            if fit_type != "N/A":
+                fit_style_parts.append(fit_type)
+            if style_type != "N/A":
+                fit_style_parts.append(style_type)
+            if length_type != "N/A":
+                fit_style_parts.append(length_type)
+            if pattern_type != "N/A":
+                fit_style_parts.append(pattern_type)
+            if fabric_type != "N/A":
+                fit_style_parts.append(f"{fabric_type} fabric")
+                
+            if fit_style_parts:
+                full_fit_style = ", ".join(fit_style_parts)
+                if fit_style_description:
+                    full_fit_style += f" ({fit_style_description})"
+                st.session_state.clothing_fit_style = full_fit_style
+            elif fit_style_description:
+                st.session_state.clothing_fit_style = fit_style_description
+            else:
+                st.session_state.clothing_fit_style = "N/A"
+        
+        # 3. Clothing Color Section
+        with st.expander("3. Clothing Color", expanded=True):
+            # The existing color change option can remain, but we'll add more specific color selections
+            st.info("Select colors for your apparel item. This will be used along with or instead of the uploaded image colors.")
+            
+            # Initialize default color options
+            color_options = [
+                "N/A", "White", "Black", "Red", "Blue", "Green", "Yellow", "Purple", "Pink", 
+                "Navy", "Gray", "Striped", "Patterned", "Heathered", "Other"
+            ]
+            
+            # Update color options based on clothing category or product type
+            if not use_bc_products and 'clothing_category' in locals():
+                if clothing_category == "Bottoms":
+                    color_options = [
+                        "N/A", "Light blue jeans", "Dark wash jeans", "Medium wash jeans", "Black jeans",
+                        "Black leggings", "Gray trousers", "Khaki", "Navy", "Other"
+                    ]
+                elif clothing_category == "Footwear":
+                    color_options = [
+                        "N/A", "White sneakers", "Black boots", "Tan sandals", "Silver sneakers", 
+                        "Brown leather", "Red", "Multi-color", "Other"
+                    ]
+                elif clothing_category == "Accessories":
+                    color_options = [
+                        "N/A", "Gold", "Silver", "Black", "Brown", "White", "Colorful", "Other"
+                    ]
+            
+            color_type = st.selectbox("Color Description", options=color_options)
+            
+            if color_type == "Other":
+                custom_color = st.text_input("Specify Color Description")
+                color_type = custom_color if custom_color else "Custom color"
+            
+            # Show additional color details option
+            color_details = st.text_area(
+                "Additional Color Details (Optional)",
+                placeholder="Describe any color details, patterns, gradients, etc."
+            )
+            
+            # Update session state
+            if color_type != "N/A":
+                if color_details:
+                    st.session_state.clothing_color = f"{color_type} ({color_details})"
+                else:
+                    st.session_state.clothing_color = color_type
+            elif color_details:
+                st.session_state.clothing_color = color_details
+            else:
+                st.session_state.clothing_color = "N/A"
+            
+            # Note about color change option
+            if "apparel_color" in st.session_state and st.session_state.apparel_color:
+                st.info("Note: You also have a specific color change applied from the 'Change Apparel Color' section.")
+        
+        # Add color change option (existing code)
+        with st.expander("Change Apparel Color", expanded=False):
             st.info("Use this option if you want to change the color of your apparel.")
             color_change = st.checkbox("I want to change the apparel color")
             
             if color_change:
-                # Color selection options
-                color_method = st.radio("Color Selection Method", ["Color Picker", "Hex Code Input"])
+                # Color selection options using Bella+Canvas color swatches
+                color_method = st.radio("Color Selection Method", ["Bella+Canvas Colors", "Custom Color"])
                 
-                if color_method == "Color Picker":
-                    selected_color = st.color_picker("Select New Color", "#0000FF")
-                    # Ensure the color_picker value is stored properly
+                if color_method == "Bella+Canvas Colors":
+                    # Display Bella+Canvas color options
+                    color_name = st.selectbox("Select Color", list(BELLA_CANVAS_COLORS.keys()))
+                    selected_color = BELLA_CANVAS_COLORS[color_name]
+                    # Display the selected color
+                    st.markdown(f"<div style='background-color:{selected_color}; width:50px; height:50px; border:1px solid black'></div>", unsafe_allow_html=True)
+                    st.write(f"Selected color: {color_name} ({selected_color})")
                     st.session_state.apparel_color = selected_color
+                    st.session_state.apparel_color_name = color_name
                 else:
-                    selected_color = st.text_input("Enter Hex Color Code", "#0000FF")
-                    # Validate hex code and ensure it starts with #
-                    if selected_color:
-                        if not selected_color.startswith('#'):
-                            selected_color = '#' + selected_color
-                        # Store the validated hex code
+                    # Custom color options
+                    custom_color_method = st.radio("Custom Color Method", ["Color Picker", "Hex Code Input"])
+                    
+                    if custom_color_method == "Color Picker":
+                        selected_color = st.color_picker("Select New Color", "#0000FF")
                         st.session_state.apparel_color = selected_color
+                        st.session_state.apparel_color_name = "Custom"
+                    else:
+                        selected_color = st.text_input("Enter Hex Color Code", "#0000FF")
+                        # Validate hex code and ensure it starts with #
+                        if selected_color:
+                            if not selected_color.startswith('#'):
+                                selected_color = '#' + selected_color
+                            st.session_state.apparel_color = selected_color
+                            st.session_state.apparel_color_name = "Custom"
                 
                 # Display the selected color
                 if "apparel_color" in st.session_state and st.session_state.apparel_color:
@@ -147,14 +700,66 @@ if page == "Upload Apparel":
             else:
                 # Reset the color if checkbox is unchecked
                 st.session_state.apparel_color = None
+                st.session_state.apparel_color_name = None
         
-        # Use 'content' instead of 'auto' for width
-        st.image(image, caption="Uploaded Apparel Image", width="content")
-        st.success("Apparel image uploaded successfully!")
+        # Display the current selections and generate a preview of the final prompt
+        st.subheader("Current Apparel Information")
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.image(image, caption="Uploaded Apparel Image", width=250)
+            
+        with col2:
+            if st.session_state.clothing_type != "N/A":
+                st.markdown(f"**Clothing Type:** {st.session_state.clothing_type}")
+            else:
+                st.markdown("**Clothing Type:** N/A")
+                
+            if st.session_state.clothing_fit_style != "N/A":
+                st.markdown(f"**Fit & Style:** {st.session_state.clothing_fit_style}")
+            else:
+                st.markdown("**Fit & Style:** N/A")
+                
+            if st.session_state.clothing_color != "N/A":
+                st.markdown(f"**Color Description:** {st.session_state.clothing_color}")
+            else:
+                st.markdown("**Color Description:** N/A")
+                
+            if "apparel_color" in st.session_state and st.session_state.apparel_color:
+                color_name = st.session_state.apparel_color_name if "apparel_color_name" in st.session_state else "Custom"
+                st.markdown(f"**Color Change:** {color_name}")
+                st.markdown(f"<div style='background-color:{st.session_state.apparel_color}; width:50px; height:50px; border:1px solid black'></div>", unsafe_allow_html=True)
+        
+        # Generate and display preview of the final prompt
+        st.subheader("Final Prompt Preview")
+        prompt_parts = []
+        
+        if st.session_state.clothing_type != "N/A":
+            prompt_parts.append(f"Clothing Type: {st.session_state.clothing_type}")
+        
+        if st.session_state.clothing_fit_style != "N/A":
+            prompt_parts.append(f"Fit and Style: {st.session_state.clothing_fit_style}")
+        
+        if st.session_state.clothing_color != "N/A":
+            prompt_parts.append(f"Color: {st.session_state.clothing_color}")
+        
+        if "apparel_color" in st.session_state and st.session_state.apparel_color:
+            color_name = st.session_state.apparel_color_name if "apparel_color_name" in st.session_state else "Custom"
+            prompt_parts.append(f"Apply color change to: {color_name} ({st.session_state.apparel_color})")
+        
+        if prompt_parts:
+            final_prompt = "The model should be wearing apparel with these specifications:\n" + "\n".join(prompt_parts)
+            st.session_state.final_prompt = final_prompt
+            st.info(final_prompt)
+        else:
+            st.session_state.final_prompt = ""
+            st.info("No specific apparel details have been provided. The model will wear the uploaded item as shown.")
+        
+        st.success("Apparel image uploaded successfully! Proceed to 'Select Model' to choose a model for your apparel.")
 
-# Generate Model page
-elif page == "Generate Model":
-    st.header("Generate AI Model")
+# Select Model page (renamed from Generate Model)
+elif page == "Select Model":
+    st.header("Select Model")
     
     if st.session_state.apparel_image is None:
         st.warning("Please upload an apparel image first.")
@@ -163,407 +768,149 @@ elif page == "Generate Model":
         st.subheader("Uploaded Apparel")
         st.image(st.session_state.apparel_image, width=300)
         
-        # Add Prompt Input Feature for model generation
-        with st.expander("Advanced Prompt Input", expanded=True):
-            st.info("Provide additional details to customize your model beyond the standard options.")
+        # Gender selection tabs for model selection
+        gender_tab = st.radio("Select Gender", ["Male", "Female"])
+        
+        # Display model selection based on gender
+        st.subheader(f"Select {gender_tab} Model")
+        
+        # Create columns for model display
+        cols = st.columns(min(5, len(PREDEFINED_MODELS[gender_tab])))
+        
+        for i, model in enumerate(PREDEFINED_MODELS[gender_tab]):
+            with cols[i % len(cols)]:
+                # Check if model image exists, if not display placeholder
+                try:
+                    if os.path.exists(model["image_path"]):
+                        model_img = Image.open(model["image_path"])
+                    else:
+                        # If image doesn't exist yet, generate a placeholder
+                        # This is temporary - in production, these would be pre-generated
+                        st.info(f"Using placeholder for {model['name']}")
+                        model_img = None
+                except:
+                    model_img = None
+                
+                # Display model image or placeholder
+                if model_img:
+                    st.image(model_img, caption=model["name"], use_column_width=True)
+                else:
+                    st.markdown(f"### {model['name']}")
+                    st.markdown(model["description"])
+                
+                # Selection button for this model
+                if st.button(f"Select {model['name']}", key=f"select_{model['id']}"):
+                    st.session_state.selected_model = model
+                    st.session_state.model_attributes = model["attributes"]
+                    
+                    # If model image exists, use it
+                    if model_img:
+                        st.session_state.model_image = model_img
+                    else:
+                        # In a real implementation, you would have these pre-generated
+                        # For now, we'll just note that this would normally generate the model
+                        st.info(f"Model {model['name']} selected. In production, this would use a pre-generated image.")
+                        st.session_state.model_image = None
+        
+        # Display selected model if any
+        if st.session_state.selected_model:
+            st.success(f"You have selected: {st.session_state.selected_model['name']}")
+            st.info(f"Description: {st.session_state.selected_model['description']}")
             
-            # Initialize the custom prompt in session state if not already present
-            if "model_custom_prompt" not in st.session_state:
-                st.session_state.model_custom_prompt = ""
+            # Add styling input for the selected model
+            st.subheader("Styling Input")
             
-            custom_prompt_options = st.multiselect(
-                "Select additional details to include:",
-                options=[
-                    "Accessories (jewelry, watches, etc.)",
-                    "Specific body type details",
-                    "Specific facial features",
-                    "Makeup style",
-                    "Environment context",
-                    "Other custom details"
-                ]
+            # Initialize styling prompt in session state if not already present
+            if "styling_prompt" not in st.session_state:
+                st.session_state.styling_prompt = ""
+            
+            styling_prompt = st.text_area(
+                "Styling Instructions", 
+                value=st.session_state.styling_prompt,
+                placeholder="Example: tucked in, oversized fit, rolled sleeves, textured fabric, etc.",
+                help="Add specific styling instructions for how the garment should appear on the model."
             )
             
-            # Display relevant input fields based on selections
-            custom_prompt_parts = []
+            st.session_state.styling_prompt = styling_prompt
             
-            if "Accessories (jewelry, watches, etc.)" in custom_prompt_options:
-                accessories = st.text_area("Describe accessories:", 
-                                          placeholder="Example: gold hoop earrings, minimalist watch, thin gold necklace")
-                if accessories:
-                    custom_prompt_parts.append(f"Accessories: {accessories}")
-            
-            if "Specific body type details" in custom_prompt_options:
-                body_type = st.text_area("Describe specific body type details:", 
-                                        placeholder="Example: athletic shoulders, slim waist, toned arms")
-                if body_type:
-                    custom_prompt_parts.append(f"Body type details: {body_type}")
-            
-            if "Specific facial features" in custom_prompt_options:
-                facial_features = st.text_area("Describe specific facial features:", 
-                                              placeholder="Example: defined cheekbones, almond eyes, strong jawline")
-                if facial_features:
-                    custom_prompt_parts.append(f"Facial features: {facial_features}")
-            
-            if "Makeup style" in custom_prompt_options:
-                makeup = st.text_area("Describe makeup style:", 
-                                     placeholder="Example: natural makeup, subtle eyeliner, nude lipstick")
-                if makeup:
-                    custom_prompt_parts.append(f"Makeup: {makeup}")
-            
-            if "Environment context" in custom_prompt_options:
-                environment = st.text_area("Describe environment context:", 
-                                          placeholder="Example: indoor studio setting, natural lighting")
-                if environment:
-                    custom_prompt_parts.append(f"Environment context: {environment}")
-            
-            if "Other custom details" in custom_prompt_options:
-                other_details = st.text_area("Other custom details:", 
-                                            placeholder="Any other specific details you want to include")
-                if other_details:
-                    custom_prompt_parts.append(f"Custom details: {other_details}")
-            
-            # Combine all parts into a final custom prompt
-            if custom_prompt_parts:
-                st.session_state.model_custom_prompt = ". ".join(custom_prompt_parts)
-                st.success("Custom prompt details will be applied to model generation.")
-            else:
-                st.session_state.model_custom_prompt = ""
-        
-        # Model customization options
-        st.subheader("Customize Your Model")
-        
-        # Gender selection first to determine which options to show
-        gender = st.radio("Select Model Gender", ["Male", "Female"])
-        
-        # Add facial expression selection
-        facial_expression = st.selectbox(
-            "Facial Expression",
-            options=["Neutral", "Smiling", "Serious", "Confident", "Relaxed"]
-        )
-        
-        # Define styling options based on gender
-        if gender == "Male":
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                ethnicity = st.selectbox(
-                    "Ethnicity",
-                    options=["African American", "Caucasian", "Spanish", "Korean", "Japanese"]
-                )
-                
-                height = st.selectbox(
-                    "Height",
-                    options=["6'0\"", "6'1\"", "6'2\""]
-                )
-                
-                build = st.selectbox(
-                    "Build",
-                    options=["Athletic", "Slender"]
-                )
-            
-            with col2:
-                hair_color = st.selectbox(
-                    "Hair Color",
-                    options=["Brown", "Black", "Bleach Blonde"]
-                )
-                
-                hair_style = st.selectbox(
-                    "Hair Style",
-                    options=["Buzz Cut", "Wavy", "Curly", "Tapered Haircut"]
-                )
-                
-                skin = st.selectbox(
-                    "Skin Type",
-                    options=["Smooth", "Smooth with Moles"]
-                )
-            
-            # Additional styling options in expandable sections
-            with st.expander("Bottoms Style"):
-                bottom_color = st.selectbox(
-                    "Bottom Color",
-                    options=["Black", "Dark Denim", "Light Denim", "Faded Denim", "Navy", "White", "Off-White"]
-                )
-                
-                bottom_style = st.selectbox(
-                    "Bottom Style",
-                    options=["Straight Leg Denim", "Baggy Denim", "Utility Denim", "BC Sweatpants"]
-                )
-            
-            with st.expander("Shoes Style"):
-                shoe_color = st.selectbox(
-                    "Shoe Color",
-                    options=["Black", "White", "Metallic Silver", "Grey", "Navy", "Multicolored"]
-                )
-                
-                shoe_style = st.selectbox(
-                    "Shoe Style",
-                    options=["Loafer", "New Balance 1906R", "Converse Chuck Taylor"]
-                )
-        
-        else:  # Female options
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                ethnicity = st.selectbox(
-                    "Ethnicity",
-                    options=["African American", "Caucasian", "Spanish", "Korean", "Japanese"]
-                )
-                
-                height = st.selectbox(
-                    "Height",
-                    options=["5'9\"", "5'10\"", "5'11\""]
-                )
-                
-                build = st.selectbox(
-                    "Build",
-                    options=["Thin", "Toned", "Small Bust"]
-                )
-            
-            with col2:
-                hair_color = st.selectbox(
-                    "Hair Color",
-                    options=["Blonde", "Brown", "Black", "Brown with Blonde Highlights"]
-                )
-                
-                hair_style = st.selectbox(
-                    "Hair Style",
-                    options=[
-                        "Down with Soft Wave & Center Part", 
-                        "Down with Center Part & Straight", 
-                        "Loose Low Bun with Center Part", 
-                        "Slicked Back High Ponytail with Braid",
-                        "Slicked Back Low Ponytail"
-                    ]
-                )
-                
-                skin = st.selectbox(
-                    "Skin Type",
-                    options=["Smooth", "Smooth with Moles"]
-                )
-            
-            # Additional styling options in expandable sections
-            with st.expander("Bottoms Style"):
-                bottom_color = st.selectbox(
-                    "Bottom Color",
-                    options=["Black", "Dark Denim", "Light Denim", "Faded Denim", "Navy", "White", "Off-White"]
-                )
-                
-                bottom_style = st.selectbox(
-                    "Bottom Style",
-                    options=["Straight Leg Denim", "Baggy Denim", "Utility Denim", "BC Sweatpants"]
-                )
-            
-            with st.expander("Shoes Style"):
-                shoe_color = st.selectbox(
-                    "Shoe Color",
-                    options=["White", "Off-White", "Black", "Metallic Silver", "Grey", "Navy", "Multicolored"]
-                )
-                
-                shoe_style = st.selectbox(
-                    "Shoe Style",
-                    options=["Converse Chuck Taylor High Top", "Loafers", "Adidas Gazelle", "New Balance 237"]
-                )
-        
-        # Store model attributes with all the detailed styling options
-        model_attributes = {
-            "gender": gender,
-            "ethnicity": ethnicity,
-            "height": height,
-            "build": build,
-            "hair_color": hair_color,
-            "hair_style": hair_style,
-            "skin": skin,
-            "bottom_color": bottom_color,
-            "bottom_style": bottom_style,
-            "shoe_color": shoe_color,
-            "shoe_style": shoe_style,
-            "facial_expression": facial_expression,
-            "custom_prompt": st.session_state.model_custom_prompt  # Add custom prompt to attributes
-        }
-        
-        # Generate model button
-        if st.button("Generate Model"):
-            with st.spinner("Generating model... This may take a moment."):
-                # Create a detailed description for the model generation
-                detailed_description = f"{gender} model, {ethnicity}, {height} tall, {build.lower()} build, "
-                detailed_description += f"{hair_color.lower()} {hair_style.lower()} hair, {skin.lower()} skin, "
-                detailed_description += f"wearing {bottom_color.lower()} {bottom_style.lower()} and {shoe_color.lower()} {shoe_style.lower()} shoes."
-                
-                # Add custom prompt to detailed description if available
-                if st.session_state.model_custom_prompt:
-                    detailed_description += f" {st.session_state.model_custom_prompt}"
-                
-                # Use our ImagenHandler to generate the model image with the detailed attributes
-                model_image, error = imagen_handler.generate_model_image(
-                    gender=gender,
-                    physique=build,
-                    ethnicity=ethnicity,
-                    height=height,
-                    hair_color=hair_color,
-                    hair_style=hair_style,
-                    skin=skin,
-                    clothing_type=f"{bottom_color} {bottom_style}",
-                    shoe_style=f"{shoe_color} {shoe_style}",
-                    facial_expression=facial_expression,
-                    custom_prompt=st.session_state.model_custom_prompt  # Pass custom prompt to the ImagenHandler
-                )
-                
-                if model_image:
-                    st.session_state.model_image = model_image
-                    st.session_state.model_attributes = model_attributes
-                    st.success("Model generated successfully!")
-                    # Use 'content' instead of 'auto' for width
-                    st.image(model_image, caption=f"Generated {gender} Model: {detailed_description}", width="content")
-                    st.markdown("Now go to the 'Photoshoot' tab to fit your apparel on this model.")
-                else:
-                    st.error(f"Error generating model: {error}")
+            if styling_prompt:
+                st.success("Styling instructions will be applied during photoshoot generation.")
 
 elif page == "Photoshoot":
     st.header("Virtual Photoshoot")
     
     if st.session_state.apparel_image is None:
         st.warning("Please upload an apparel image first.")
-    elif st.session_state.model_image is None:
-        st.warning("Please generate a model first.")
+    elif st.session_state.selected_model is None:
+        st.warning("Please select a model first.")
     else:
-        # Display the uploaded apparel and generated model
+        # Display the uploaded apparel and selected model
         col1, col2 = st.columns(2)
         
         with col1:
             st.subheader("Your Apparel")
             st.image(st.session_state.apparel_image, width=300)
+            
+            # Display detailed apparel information
+            with st.expander("Apparel Information", expanded=True):
+                if st.session_state.clothing_type != "N/A":
+                    st.markdown(f"**Clothing Type:** {st.session_state.clothing_type}")
+                
+                if st.session_state.clothing_fit_style != "N/A":
+                    st.markdown(f"**Fit & Style:** {st.session_state.clothing_fit_style}")
+                
+                if st.session_state.clothing_color != "N/A":
+                    st.markdown(f"**Color Description:** {st.session_state.clothing_color}")
+                    
+                # Display color information if a color was selected
+                if "apparel_color" in st.session_state and st.session_state.apparel_color:
+                    color_name = st.session_state.apparel_color_name if "apparel_color_name" in st.session_state else "Custom"
+                    st.markdown(f"**Selected Color:** {color_name}")
+                    st.markdown(f"<div style='background-color:{st.session_state.apparel_color}; width:50px; height:50px; border:1px solid black'></div>", unsafe_allow_html=True)
         
         with col2:
             st.subheader("Your Model")
-            st.image(st.session_state.model_image, width=300)
-        
-        # Add Prompt Input Feature for photoshoot generation
-        with st.expander("Advanced Prompt Input for Photoshoot", expanded=True):
-            st.info("Provide additional details for how the apparel should fit and appear on the model.")
-            
-            # Initialize the custom prompt in session state if not already present
-            if "photoshoot_custom_prompt" not in st.session_state:
-                st.session_state.photoshoot_custom_prompt = ""
-            
-            custom_photoshoot_options = st.multiselect(
-                "Select additional details to include:",
-                options=[
-                    "Fit style and appearance",
-                    "Apparel texture details",
-                    "Apparel color adjustments",
-                    "Apparel drape and movement",
-                    "Strap or neckline details",
-                    "Specific styling instructions",
-                    "Other custom details"
-                ]
-            )
-            
-            # Display relevant input fields based on selections
-            custom_photoshoot_parts = []
-            
-            if "Fit style and appearance" in custom_photoshoot_options:
-                fit_style = st.text_area("Describe fit style:", 
-                                        placeholder="Example: loose and relaxed fit, tight and form-fitting, slightly oversized")
-                if fit_style:
-                    custom_photoshoot_parts.append(f"Fit style: {fit_style}")
-            
-            if "Apparel texture details" in custom_photoshoot_options:
-                texture = st.text_area("Describe texture details:", 
-                                      placeholder="Example: soft cotton texture, ribbed knit texture, silky smooth finish")
-                if texture:
-                    custom_photoshoot_parts.append(f"Texture: {texture}")
-            
-            if "Apparel color adjustments" in custom_photoshoot_options:
-                color_adj = st.text_area("Describe color adjustments:", 
-                                        placeholder="Example: make the blue more vibrant, add slight gradient effect")
-                if color_adj:
-                    custom_photoshoot_parts.append(f"Color adjustments: {color_adj}")
-            
-            if "Apparel drape and movement" in custom_photoshoot_options:
-                drape = st.text_area("Describe drape and movement:", 
-                                    placeholder="Example: flowing fabric with natural folds, stiff structured appearance")
-                if drape:
-                    custom_photoshoot_parts.append(f"Drape and movement: {drape}")
-            
-            if "Strap or neckline details" in custom_photoshoot_options:
-                strap_details = st.text_area("Describe strap or neckline details:", 
-                                            placeholder="Example: thin straps sitting flat on shoulders, wide scoop neckline")
-                if strap_details:
-                    custom_photoshoot_parts.append(f"Strap/neckline details: {strap_details}")
-            
-            if "Specific styling instructions" in custom_photoshoot_options:
-                styling = st.text_area("Describe specific styling instructions:", 
-                                      placeholder="Example: tuck in front of shirt, roll sleeves up to elbows")
-                if styling:
-                    custom_photoshoot_parts.append(f"Styling instructions: {styling}")
-            
-            if "Other custom details" in custom_photoshoot_options:
-                other_photoshoot_details = st.text_area("Other custom details:", 
-                                                      placeholder="Any other specific details for the photoshoot")
-                if other_photoshoot_details:
-                    custom_photoshoot_parts.append(f"Custom details: {other_photoshoot_details}")
-            
-            # Combine all parts into a final custom prompt
-            if custom_photoshoot_parts:
-                st.session_state.photoshoot_custom_prompt = ". ".join(custom_photoshoot_parts)
-                st.success("Custom prompt details will be applied to photoshoot generation.")
+            if st.session_state.model_image:
+                st.image(st.session_state.model_image, width=300)
             else:
-                st.session_state.photoshoot_custom_prompt = ""
-                
-        # Create tabs for different photoshoot configuration options
-        pose_tab, view_tab, background_tab, lighting_tab = st.tabs(["Pose", "View Angle", "Background", "Lighting"])
+                # Display model information as text if image isn't available
+                st.info(f"Model: {st.session_state.selected_model['name']}")
+                st.info(f"Description: {st.session_state.selected_model['description']}")
         
-        # Pose selection tab
-        with pose_tab:
-            st.subheader("Select Pose")
-            pose_options = [
-                "Natural standing", "Casual walking", "Seated", "Arms crossed",
-                "Hand on hip", "Hands in pockets", "Runway walk", "Looking over shoulder",
-                "Profile view", "Jumping", "Action pose"
-            ]
-            
-            pose = st.selectbox("Choose a pose", options=pose_options)
+        # Create tabs for different photoshoot configuration options
+        view_tab, background_tab, lighting_tab = st.tabs(["View Angle", "Background", "Lighting"])
         
         # View angle tab
         with view_tab:
             st.subheader("Select View Angle")
             view_options = [
                 "Front view", "Back view", "Side view (left)", "Side view (right)", 
-                "Three-quarter front", "Three-quarter back", "Low angle", "High angle"
+                "Three-quarter front", "Three-quarter back"
             ]
             
-            view_angle = st.selectbox("Choose a view angle", options=view_options)
+            view_angle = st.selectbox("Choose a view angle", options=view_options, index=0)
         
         # Background tab
         with background_tab:
             st.subheader("Select Background")
             background_options = [
-                "Studio white", "Studio light gray", "Studio dark gray", "Studio black",
-                "Minimalist interior", "Urban street", "Nature outdoor", "Beach", 
-                "Gradient", "Solid color", "Transparent (for e-commerce)"
+                "Light grey studio cyc, no shadows", 
+                "White studio", 
+                "Dark grey studio", 
+                "Black studio",
+                "Minimalist interior", 
+                "Urban street", 
+                "Nature outdoor", 
+                "Solid color"
             ]
             
-            background = st.selectbox("Choose a background", options=background_options)
+            background = st.selectbox("Choose a background", options=background_options, index=0)
             
             # Show additional options based on background selection
-            if background == "Gradient":
-                gradient_direction = st.selectbox(
-                    "Gradient Direction", 
-                    options=["Top to Bottom", "Left to Right", "Diagonal"]
-                )
-                gradient_colors = st.selectbox(
-                    "Gradient Colors",
-                    options=["Blue to Purple", "Orange to Pink", "Green to Blue", "Gray to White", "Custom"]
-                )
-                if gradient_colors == "Custom":
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        color1 = st.color_picker("First Color", "#ffffff")
-                    with col2:
-                        color2 = st.color_picker("Second Color", "#e0e0e0")
-            
-            elif background == "Solid color":
-                background_color = st.color_picker("Choose background color", "#f0f0f0")
+            if background == "Solid color":
+                bg_color_name = st.selectbox("Choose background color", list(BELLA_CANVAS_COLORS.keys()))
+                background_color = BELLA_CANVAS_COLORS[bg_color_name]
+                st.markdown(f"<div style='background-color:{background_color}; width:100px; height:50px; border:1px solid black'></div>", unsafe_allow_html=True)
         
         # Lighting tab
         with lighting_tab:
@@ -571,56 +918,15 @@ elif page == "Photoshoot":
             lighting_style = st.selectbox(
                 "Lighting Style",
                 options=[
-                    "Standard studio", "Soft diffused", "Dramatic", "Bright high-key", 
-                    "Dark low-key", "Natural sunlight", "Golden hour", "Blue hour"
-                ]
+                    "Standard studio", "Soft diffused", "Natural lighting", "Bright high-key"
+                ],
+                index=0
             )
-            
-            lighting_direction = st.selectbox(
-                "Main Light Direction",
-                options=["Front", "Side", "Back (rim lighting)", "Top-down", "Bottom-up", "Three-point lighting"]
-            )
-            
-            # Advanced lighting controls with sliders
-            with st.expander("Advanced Lighting Controls"):
-                light_intensity = st.slider("Light Intensity", min_value=0.0, max_value=1.0, value=0.7, step=0.1)
-                contrast = st.slider("Contrast", min_value=0.0, max_value=1.0, value=0.5, step=0.1)
-                shadows = st.slider("Shadow Intensity", min_value=0.0, max_value=1.0, value=0.3, step=0.1)
         
-        # Advanced options
-        with st.expander("Advanced Options"):
-            generate_multiple = st.checkbox("Generate multiple variations")
-            
-            if generate_multiple:
-                num_variations = st.slider("Number of variations", min_value=1, max_value=5, value=3)
-                variation_type = st.radio("Variation type", ["Pose variations", "Background variations", "View angle variations"])
-                
-                if variation_type == "Pose variations":
-                    selected_poses = st.multiselect(
-                        "Select poses for variations",
-                        options=pose_options,
-                        default=[pose_options[0], pose_options[1], pose_options[2]]
-                    )
-                elif variation_type == "Background variations":
-                    selected_backgrounds = st.multiselect(
-                        "Select backgrounds for variations",
-                        options=background_options,
-                        default=[background_options[0], background_options[1], background_options[2]]
-                    )
-                else:  # View angle variations
-                    selected_views = st.multiselect(
-                        "Select view angles for variations",
-                        options=view_options,
-                        default=[view_options[0], view_options[1], view_options[2]]
-                    )
-            
-            # Add quality settings
-            st.subheader("Quality Settings")
-            quality_options = st.radio(
-                "Image Quality", 
-                ["Standard", "High", "Ultra HD (slower generation)"],
-                horizontal=True
-            )
+        # Display styling prompt if provided
+        if "styling_prompt" in st.session_state and st.session_state.styling_prompt:
+            st.subheader("Styling Instructions")
+            st.info(st.session_state.styling_prompt)
         
         # Store photoshoot settings in session state
         if "photoshoot_settings" not in st.session_state:
@@ -628,160 +934,169 @@ elif page == "Photoshoot":
         
         # Update photoshoot settings based on user selections
         st.session_state.photoshoot_settings = {
-            "pose": pose,
             "view_angle": view_angle,
             "background": background,
-            "lighting_style": lighting_style,
-            "lighting_direction": lighting_direction
+            "lighting_style": lighting_style
         }
         
         # Add background specific settings
-        if background == "Gradient" and "gradient_colors" in locals():
-            st.session_state.photoshoot_settings["gradient_direction"] = gradient_direction
-            st.session_state.photoshoot_settings["gradient_colors"] = gradient_colors
-            if gradient_colors == "Custom" and "color1" in locals():
-                st.session_state.photoshoot_settings["gradient_color1"] = color1
-                st.session_state.photoshoot_settings["gradient_color2"] = color2
-        elif background == "Solid color" and "background_color" in locals():
+        if background == "Solid color" and "background_color" in locals():
             st.session_state.photoshoot_settings["background_color"] = background_color
         
-        # Add advanced lighting settings if expanded
-        if "light_intensity" in locals():
-            st.session_state.photoshoot_settings["light_intensity"] = light_intensity
-            st.session_state.photoshoot_settings["contrast"] = contrast
-            st.session_state.photoshoot_settings["shadows"] = shadows
+        # Show final prompt preview
+        st.subheader("Final Generation Prompt")
+        
+        # Build the final prompt
+        final_prompt_parts = ["The model should be wearing apparel with these specifications:"]
+        
+        # Add styling instructions first if provided (giving it higher priority)
+        if "styling_prompt" in st.session_state and st.session_state.styling_prompt:
+            final_prompt_parts.append(f"IMPORTANT STYLING INSTRUCTIONS: {st.session_state.styling_prompt}")
+            final_prompt_parts.append("==== APPLY ABOVE STYLING INSTRUCTIONS WITH HIGHEST PRIORITY ====")
+        
+        # Add clothing type information
+        if st.session_state.clothing_type != "N/A":
+            final_prompt_parts.append(f"Clothing Type: {st.session_state.clothing_type}")
             
-        # Add quality settings
-        st.session_state.photoshoot_settings["quality"] = quality_options
+        # Add fit and style information
+        if st.session_state.clothing_fit_style != "N/A":
+            final_prompt_parts.append(f"Fit and Style: {st.session_state.clothing_fit_style}")
+            
+        # Add color description
+        if st.session_state.clothing_color != "N/A":
+            final_prompt_parts.append(f"Color: {st.session_state.clothing_color}")
+            
+        # Add color change if specified
+        if "apparel_color" in st.session_state and st.session_state.apparel_color:
+            color_name = st.session_state.apparel_color_name if "apparel_color_name" in st.session_state else "Custom"
+            final_prompt_parts.append(f"Apply color change to: {color_name} ({st.session_state.apparel_color})")
+            
+        # Add photoshoot settings
+        final_prompt_parts.append(f"View Angle: {view_angle}")
+        final_prompt_parts.append(f"Background: {background}")
+        if background == "Solid color" and "background_color" in locals():
+            final_prompt_parts.append(f"Background Color: {bg_color_name} ({background_color})")
+        final_prompt_parts.append(f"Lighting: {lighting_style}")
+        
+        # Display the final prompt
+        final_prompt = "\n".join(final_prompt_parts)
+        st.session_state.final_prompt = final_prompt
+        
+        with st.expander("View Complete Generation Prompt", expanded=True):
+            st.info(final_prompt)
         
         # Fit apparel button
+        # Add model selection
+        st.subheader("AI Model Selection")
+        ai_model = st.radio(
+            "Select AI model for try-on generation",
+            ["Hybrid (OpenAI + Gemini)", "OpenAI DALL-E 3", "Google Gemini"],
+            index=0,  # Making hybrid the default option
+            help="Hybrid approach uses OpenAI to extract apparel features and Gemini for the actual try-on, providing the best color accuracy and model consistency"
+        )
+        
+        # Add explanation text based on selection
+        if ai_model == "Hybrid (OpenAI + Gemini)":
+            st.info("📝 **Hybrid Approach:** OpenAI extracts precise color, texture, and pattern details from your apparel, then Gemini generates the try-on while maintaining model consistency.")
+        elif ai_model == "OpenAI DALL-E 3":
+            st.warning("⚠️ **DALL-E 3:** May produce inaccurate colors and alter model appearance.")
+        else:
+            st.info("🔍 **Google Gemini:** Maintains model consistency but may not perfectly capture apparel colors and textures.")
+        
         if st.button("Fit Apparel & Create Photoshoot"):
-            if generate_multiple and (('selected_poses' in locals() and len(selected_poses) > 0) or 
-                               ('selected_backgrounds' in locals() and len(selected_backgrounds) > 0) or
-                               ('selected_views' in locals() and len(selected_views) > 0)):
-                with st.spinner("Creating multiple photoshoot variations... This may take a moment."):
-                    # Determine which type of variation we're generating
-                    if variation_type == "Pose variations" and 'selected_poses' in locals():
-                        variations = selected_poses
-                        var_type = "pose"
-                    elif variation_type == "Background variations" and 'selected_backgrounds' in locals():
-                        variations = selected_backgrounds
-                        var_type = "background"
-                    elif variation_type == "View angle variations" and 'selected_views' in locals():
-                        variations = selected_views
-                        var_type = "view"
-                    else:
-                        st.error("Please select at least one variation option")
-                        # Instead of 'return', we'll use a boolean variable to control the flow
-                        should_continue = False
-                    
-                    # Generate multiple variations with the current photoshoot settings
-                    images, error = imagen_handler.generate_photoshoot_variations(
+            with st.spinner("Creating your photoshoot... This may take a moment."):
+                # Get styling prompt and combine with apparel details
+                styling_prompt = st.session_state.styling_prompt if "styling_prompt" in st.session_state else ""
+                
+                # Add apparel details to the styling prompt for more accurate generation
+                if st.session_state.final_prompt:
+                    enhanced_styling = styling_prompt + "\n\n" + st.session_state.final_prompt if styling_prompt else st.session_state.final_prompt
+                else:
+                    enhanced_styling = styling_prompt
+                
+                # Use the selected model for image generation
+                if ai_model == "Hybrid (OpenAI + Gemini)":
+                    # Use the hybrid approach for best results
+                    final_image, error, high_quality_fitted = hybrid_handler.fit_apparel_on_model(
                         st.session_state.apparel_image,
                         st.session_state.model_attributes,
-                        variations,
-                        count=num_variations,
+                        "Natural standing",  # Default pose
                         model_image=st.session_state.model_image,
-                        variation_type=var_type,
-                        photoshoot_settings=st.session_state.photoshoot_settings
+                        photoshoot_settings=st.session_state.photoshoot_settings,
+                        styling_prompt=enhanced_styling,
+                        apparel_color=st.session_state.apparel_color if "apparel_color" in st.session_state else None
                     )
-                    
-                    if images and len(images) > 0:
-                        st.session_state.photoshoot_variations = images
-                        st.success(f"Successfully generated {len(images)} photoshoot variations!")
-                        
-                        # Display all variations
-                        st.subheader("Your Photoshoot Variations")
-                        cols = st.columns(min(len(images), 3))
-                        
-                        for i, image in enumerate(images):
-                            with cols[i % len(cols)]:
-                                # Create caption based on variation type
-                                if variation_type == "Pose variations":
-                                    caption = f"Pose: {variations[i]}"
-                                elif variation_type == "Background variations":
-                                    caption = f"Background: {variations[i]}"
-                                else:  # View angle variations
-                                    caption = f"View: {variations[i]}"
-                                    
-                                st.image(image, caption=caption, width="stretch")
-                                
-                                # Download button for each variation
-                                buf = io.BytesIO()
-                                image.save(buf, format="PNG")
-                                byte_im = buf.getvalue()
-                                
-                                st.download_button(
-                                    label=f"Download Variation {i+1}",
-                                    data=byte_im,
-                                    file_name=f"virtual_photoshoot_var{i+1}_{int(time.time())}.png",
-                                    mime="image/png"
-                                )
-                    else:
-                        st.error(f"Error creating photoshoot variations: {error}")
-            else:
-                with st.spinner("Creating your photoshoot... This may take a moment."):
-                    # Fit apparel on model using our ImagenHandler - passing the model image and photoshoot settings
+                elif ai_model == "OpenAI DALL-E 3":
+                    # Use OpenAI DALL-E 3 model
+                    final_image, error, high_quality_fitted = dalle3_handler.fit_apparel_on_model(
+                        st.session_state.apparel_image,
+                        st.session_state.model_attributes,
+                        "Natural standing",  # Default pose
+                        model_image=st.session_state.model_image,
+                        photoshoot_settings=st.session_state.photoshoot_settings,
+                        styling_prompt=enhanced_styling,
+                        apparel_color=st.session_state.apparel_color if "apparel_color" in st.session_state else None
+                    )
+                else:
+                    # Fallback to Google's Imagen model
                     final_image, error, high_quality_fitted = imagen_handler.fit_apparel_on_model(
                         st.session_state.apparel_image,
                         st.session_state.model_attributes,
-                        pose,
-                        model_image=st.session_state.model_image,  # Pass the model image
-                        photoshoot_settings=st.session_state.photoshoot_settings  # Pass photoshoot settings
+                        "Natural standing",  # Default pose
+                        model_image=st.session_state.model_image,
+                        photoshoot_settings=st.session_state.photoshoot_settings,
+                        styling_prompt=enhanced_styling,
+                        apparel_color=st.session_state.apparel_color if "apparel_color" in st.session_state else None
                     )
+                
+                if final_image:
+                    st.session_state.final_image = final_image
+                    # Store the high quality fitted image separately
+                    st.session_state.high_quality_fitted = high_quality_fitted
+                    # Set a flag to indicate photoshoot has been created
+                    st.session_state.photoshoot_created = True
                     
-                    if final_image:
-                        st.session_state.final_image = final_image
-                        # Store the high quality fitted image separately
-                        st.session_state.high_quality_fitted = high_quality_fitted
-                        # Set a flag to indicate photoshoot has been created
-                        st.session_state.photoshoot_created = True
-                        
-                        st.success("Photoshoot created successfully!")
-                        st.image(final_image, caption=f"Final Photoshoot - {pose} Pose", width="stretch")
-                        
-                        # Create columns for the download buttons
-                        col1, col2 = st.columns(2)
-                        
-                        # Download option for the composite image
-                        buf = io.BytesIO()
-                        final_image.save(buf, format="PNG")
-                        byte_im = buf.getvalue()
-                        
-                        with col1:
-                            st.download_button(
-                                label="Download Full Composite",
-                                data=byte_im,
-                                file_name=f"virtual_photoshoot_composite_{int(time.time())}.png",
-                                mime="image/png"
-                            )
-                        
-                        # Download option for just the high-quality fitted image
-                        if high_quality_fitted:
-                            hq_buf = io.BytesIO()
-                            high_quality_fitted.save(hq_buf, format="PNG", quality=100)
-                            hq_byte_im = hq_buf.getvalue()
-                            
-                            with col2:
-                                st.download_button(
-                                    label="Download HD Model Only",
-                                    data=hq_byte_im,
-                                    file_name=f"model_wearing_apparel_{int(time.time())}.png",
-                                    mime="image/png",
-                                    help="Download just the high-quality image of the model wearing the apparel"
-                                )
+                    # Show success message with the model used
+                    if ai_model == "Hybrid (OpenAI + Gemini)":
+                        st.success("Photoshoot created successfully with hybrid approach!")
+                        st.info("The hybrid approach extracted detailed apparel features with OpenAI and created the try-on with Gemini for optimal results.")
                     else:
-                        st.error(f"Error creating photoshoot: {error}")
-        
-        # Initialize the adjusted images list in session state if it doesn't exist
-        if "adjusted_images" not in st.session_state:
-            st.session_state.adjusted_images = []
-        
-        # Initialize photoshoot_created flag if it doesn't exist
-        if "photoshoot_created" not in st.session_state:
-            st.session_state.photoshoot_created = False
-        
-        # The "Adjust Clothing Fit" section has been removed as requested
+                        st.success(f"Photoshoot created successfully using {ai_model}!")
+                    
+                    st.image(final_image, caption=f"Final Photoshoot - {view_angle}", width="stretch")
+                    
+                    # Create columns for the download buttons
+                    col1, col2 = st.columns(2)
+                    
+                    # Download option for the composite image
+                    buf = io.BytesIO()
+                    final_image.save(buf, format="PNG")
+                    byte_im = buf.getvalue()
+                    
+                    with col1:
+                        st.download_button(
+                            label="Download Full Composite",
+                            data=byte_im,
+                            file_name=f"virtual_photoshoot_composite_{int(time.time())}.png",
+                            mime="image/png"
+                        )
+                    
+                    # Download option for just the high-quality fitted image
+                    if high_quality_fitted:
+                        hq_buf = io.BytesIO()
+                        high_quality_fitted.save(hq_buf, format="PNG", quality=100)
+                        hq_byte_im = hq_buf.getvalue()
+                        
+                        with col2:
+                            st.download_button(
+                                label="Download HD Model Only",
+                                data=hq_byte_im,
+                                file_name=f"model_wearing_apparel_{int(time.time())}.png",
+                                mime="image/png",
+                                help="Download just the high-quality image of the model wearing the apparel"
+                            )
+                else:
+                    st.error(f"Error creating photoshoot: {error}")
 
 # Footer
 st.sidebar.markdown("---")
@@ -790,7 +1105,6 @@ st.sidebar.markdown("© 2025 B+C Virtual Photoshoot App")
 # Add information about the apparel requirements
 st.sidebar.markdown("### About")
 st.sidebar.info(
-    "This app preserves the color, texture, and size of your apparel "
-    "when fitting it onto AI-generated models. Perfect for virtual try-ons "
-    "and e-commerce applications."
+    "This app allows you to fit your apparel onto one of our 10 predefined models. "
+    "Select a model, customize with Bella+Canvas colors, and get realistic product-on-model renders."
 )
