@@ -517,7 +517,7 @@ if page == "Upload Apparel":
                 st.session_state.clothing_type = "N/A"
         
         # 2. Clothing Fit and Style Section
-        with st.expander("2. Clothing Fit and Style", expanded=True):
+        with st.expander("2. Styling(uploaded apparel)", expanded=True):
             col1, col2 = st.columns(2)
             
             with col1:
