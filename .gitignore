@@ -48,3 +48,8 @@ Icon
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Project-specific exclusions
+models/backup/
+generate_models.py
+regenerate_selected_models.py
