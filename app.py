@@ -653,7 +653,7 @@ if page == "Upload Apparel":
             
             if color_change:
                 # Color selection options using Bella+Canvas color swatches
-                color_method = st.radio("Color Selection Method", ["Bella+Canvas Colors", "Custom Color"])
+                color_method = st.radio("Color Selection Method", ["Bella+Canvas Colors", "Swatches", "Custom Color"])
                 
                 if color_method == "Bella+Canvas Colors":
                     # Display Bella+Canvas color options
@@ -664,6 +664,60 @@ if page == "Upload Apparel":
                     st.write(f"Selected color: {color_name} ({selected_color})")
                     st.session_state.apparel_color = selected_color
                     st.session_state.apparel_color_name = color_name
+                elif color_method == "Swatches":
+                    # Display swatch images from the swatches folder
+                    st.subheader("Select a Swatch")
+                    
+                    # Get list of PNG files in the swatches folder
+                    swatches_dir = "swatches"
+                    if os.path.exists(swatches_dir):
+                        swatch_files = [f for f in os.listdir(swatches_dir) if f.lower().endswith('.png')]
+                        
+                        if swatch_files:
+                            # Create a grid layout for the swatches
+                            cols = st.columns(min(4, len(swatch_files)))
+                            
+                            # Dictionary to store swatch images and their names
+                            swatch_options = {}
+                            
+                            # Load and display each swatch
+                            for i, swatch_file in enumerate(swatch_files):
+                                try:
+                                    swatch_path = os.path.join(swatches_dir, swatch_file)
+                                    swatch_img = Image.open(swatch_path)
+                                    
+                                    # Get a display name without extension and prefix
+                                    display_name = swatch_file.replace('.png', '').replace('PNG-', '')
+                                    
+                                    # Store in options dictionary
+                                    swatch_options[display_name] = {
+                                        "path": swatch_path,
+                                        "image": swatch_img
+                                    }
+                                    
+                                    # Display in the appropriate column
+                                    with cols[i % len(cols)]:
+                                        st.image(swatch_img, caption=display_name, width=100)
+                                except Exception as e:
+                                    st.error(f"Error loading swatch {swatch_file}: {str(e)}")
+                            
+                            # Dropdown to select from the available swatches
+                            selected_swatch = st.selectbox("Select Swatch", list(swatch_options.keys()))
+                            
+                            if selected_swatch:
+                                # Display selected swatch
+                                st.image(swatch_options[selected_swatch]["image"], caption=f"Selected: {selected_swatch}", width=150)
+                                
+                                # Store the swatch path and name in session state
+                                st.session_state.apparel_color = swatch_options[selected_swatch]["path"]
+                                st.session_state.apparel_color_name = selected_swatch
+                                st.session_state.apparel_swatch = swatch_options[selected_swatch]["image"]
+                                
+                                st.success(f"Selected swatch: {selected_swatch}")
+                        else:
+                            st.warning("No swatch images found in the swatches folder.")
+                    else:
+                        st.warning(f"Swatches directory '{swatches_dir}' not found.")
                 else:
                     # Custom color options
                     custom_color_method = st.radio("Custom Color Method", ["Color Picker", "Hex Code Input"])
